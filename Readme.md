@@ -1,15 +1,37 @@
-Flujo de trabajo con Git y estrategia de branching
-Para el control de versiones de UTBookLM se utiliza la estrategia de branching GitFlow, ya que se adapta bien proyecto académicos desarrollados por módulos y tiene entregas parciales a lo largo del cuatrimestre. GitFlow define dos ramas principales:
+# Flujo de Trabajo con Git y Estrategia de Branching
 
-main: contiene únicamente versiones estables del sistema, listas para ser entregadas o desplegadas.
-develop: funciona como rama de integración continua; aquí se van uniendo todas las funcionalidades nuevas antes de preparar una release.
-A partir de develop se crean ramas de trabajo específicas:
+Para el control de versiones de **UTBookLM** se utiliza la estrategia de branching **GitFlow**, ya que se adapta bien a proyectos académicos desarrollados por módulos y tiene entregas parciales a lo largo del cuatrimestre.
 
-feature/*: ramas de funcionalidad, por ejemplo feature/auth, feature/documents-upload, feature/rag-chat. Cada feature se implementa y prueba de forma aislada y, cuando está lista, se integra nuevamente en develop mediante un pull request.
-release/*: ramas de preparación de versión, por ejemplo release/0.1.0. Se crean cuando se quiere congelar una versión para pruebas finales y correcciones menores. Al finalizar, se fusionan en main (creando un tag de versión) y en develop para mantener ambas ramas sincronizadas.
-hotfix/*: ramas de corrección urgente sobre producción, por ejemplo hotfix/fix-rag-crash. Nacen desde main cuando se detecta un bug crítico en una versión ya liberada, y después del arreglo se fusionan tanto en main como en develop.
-Resumen de reglas de branching
-No se trabaja directamente en main.
-Toda nueva funcionalidad se implementa en una rama feature/* creada desde develop.
-Cuando varias features están listas para una entrega, se crea una rama release/* desde develop para estabilizar la versión.
-Si aparece un bug crítico en producción, se crea una rama hotfix/* desde main y, una vez corregido, los cambios se integran tanto en main como en develop.
+## Ramas Principales
+
+GitFlow define dos ramas principales:
+
+* **`main`**: Contiene únicamente versiones estables del sistema, listas para ser entregadas o desplegadas.
+* **`develop`**: Funciona como rama de integración continua; aquí se van uniendo todas las funcionalidades nuevas antes de preparar una *release*.
+
+---
+
+## Ramas de Trabajo Específicas
+
+A partir de la rama `develop` se crean bifurcaciones específicas según el propósito del trabajo:
+
+### 1. `feature/` (Ramas de funcionalidad)
+* **Ejemplos:** `feature/auth`, `feature/documents-upload`, `feature/rag-chat`.
+* **Flujo:** Cada funcionalidad se implementa y prueba de forma aislada. Cuando está completamente lista y verificada, se integra nuevamente en `develop` mediante un (PR).
+
+### 2. `release/` (Ramas de preparación de versión)
+* **Ejemplos:** `release/0.1.0`.
+* **Flujo:** Se crearan cuando se desea congelar el código de una versión para realizar pruebas finales y correcciones menores de errores. Al finalizar la validación, se fusionan tanto en `main` (creando un tag de versión correspondiente) como en `develop` para mantener la sincronización.
+
+### 3. `hotfix/` (Ramas de corrección urgente)
+* **Ejemplos:** `hotfix/fix-rag-crash`.
+* **Flujo:** Nacen directamente desde `main` cuando se detecta un fallo crítico en un entorno de producción (una versión ya liberada). Una vez solucionado el problema, los cambios se fusionan inmediatamente tanto en `main` como en `develop`.
+
+---
+
+## Resumen de Reglas de Branching
+
+* **Prohibido trabajar directamente en `main`:** Ningún desarrollador debe realizar commits directos sobre esta rama.
+* **Origen de las funcionalidades:** Toda nueva característica debe desarrollarse estrictamente en una rama `feature/` creada a partir de `develop`.
+* **Estabilización de entregas:** Cuando un conjunto de *features* esté listo para una entrega parcial o final, se debe abrir una rama `release/*` desde `develop` con el fin de estabilizar el sistema.
+* **Gestión de crisis:** Si ocurre un error crítico en producción, se abre un `hotfix/*` desde `main` y, tras solucionarlo, el código corregido debe integrarse de forma obligatoria en `main` y en `develop`.
