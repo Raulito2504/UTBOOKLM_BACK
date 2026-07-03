@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -50,6 +51,35 @@ class FlashcardDifficulty(str, enum.Enum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
+
+
+class JobStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ExamQuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    OPEN = "open"
+
+
+class RoomVisibility(str, enum.Enum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class RoomRole(str, enum.Enum):
+    OWNER = "owner"
+    EDITOR = "editor"
+    READER = "reader"
+
+
+class NotificationStatus(str, enum.Enum):
+    UNREAD = "unread"
+    READ = "read"
 
 
 def postgres_enum(enum_class: type[enum.Enum], name: str) -> SQLEnum:
@@ -176,6 +206,13 @@ class Document(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(255))
+    storage_backend: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="local",
+    )
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     page_count: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
@@ -414,6 +451,417 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="api_keys")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("idx_refresh_tokens_user_id", "user_id"),
+        Index("idx_refresh_tokens_expires_at", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        Index("idx_password_reset_tokens_user_id", "user_id"),
+        Index("idx_password_reset_tokens_expires_at", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class OrganizationMembership(Base):
+    __tablename__ = "organization_memberships"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "user_id",
+            name="uq_org_memberships_org_user",
+        ),
+        Index("idx_org_memberships_org_id", "organization_id"),
+        Index("idx_org_memberships_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[UserRole] = mapped_column(
+        postgres_enum(UserRole, "user_role"),
+        nullable=False,
+        server_default=UserRole.MEMBER.value,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class OrganizationInvitation(Base):
+    __tablename__ = "organization_invitations"
+    __table_args__ = (
+        Index("idx_org_invitations_org_id", "organization_id"),
+        Index("idx_org_invitations_email", "email"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        postgres_enum(UserRole, "user_role"),
+        nullable=False,
+        server_default=UserRole.MEMBER.value,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        Index("idx_ingestion_jobs_document_id", "document_id"),
+        Index("idx_ingestion_jobs_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[JobStatus] = mapped_column(
+        postgres_enum(JobStatus, "job_status"),
+        nullable=False,
+        server_default=JobStatus.PENDING.value,
+    )
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(255))
+    storage_backend: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="local",
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class RagQuery(Base):
+    __tablename__ = "rag_queries"
+    __table_args__ = (
+        Index("idx_rag_queries_user_id", "user_id"),
+        Index("idx_rag_queries_org_id", "organization_id"),
+        Index("idx_rag_queries_document_id", "document_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    tokens_used: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class Exam(Base):
+    __tablename__ = "exams"
+    __table_args__ = (
+        Index("idx_exams_user_id", "user_id"),
+        Index("idx_exams_document_id", "document_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ExamQuestion(Base):
+    __tablename__ = "exam_questions"
+    __table_args__ = (Index("idx_exam_questions_exam_id", "exam_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    exam_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exams.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question_type: Mapped[ExamQuestionType] = mapped_column(
+        postgres_enum(ExamQuestionType, "exam_question_type"),
+        nullable=False,
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    correct_answer: Mapped[str | None] = mapped_column(Text)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ExamAttempt(Base):
+    __tablename__ = "exam_attempts"
+    __table_args__ = (
+        Index("idx_exam_attempts_exam_id", "exam_id"),
+        Index("idx_exam_attempts_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    exam_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exams.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    answers: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    score: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    feedback: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class StudyActivity(Base):
+    __tablename__ = "study_activities"
+    __table_args__ = (
+        Index("idx_study_activities_user_id", "user_id"),
+        Index("idx_study_activities_activity_date", "activity_date"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    activity_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    activity_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class StudyRoom(Base):
+    __tablename__ = "study_rooms"
+    __table_args__ = (
+        Index("idx_study_rooms_org_id", "organization_id"),
+        Index("idx_study_rooms_owner_id", "owner_user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[RoomVisibility] = mapped_column(
+        postgres_enum(RoomVisibility, "room_visibility"),
+        nullable=False,
+        server_default=RoomVisibility.PRIVATE.value,
+    )
+    board_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class RoomMember(Base):
+    __tablename__ = "room_members"
+    __table_args__ = (
+        UniqueConstraint("room_id", "user_id", name="uq_room_members_room_user"),
+        Index("idx_room_members_room_id", "room_id"),
+        Index("idx_room_members_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("study_rooms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[RoomRole] = mapped_column(
+        postgres_enum(RoomRole, "room_role"),
+        nullable=False,
+        server_default=RoomRole.READER.value,
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class WebSource(Base):
+    __tablename__ = "web_sources"
+    __table_args__ = (
+        Index("idx_web_sources_org_id", "organization_id"),
+        Index("idx_web_sources_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[JobStatus] = mapped_column(
+        postgres_enum(JobStatus, "job_status"),
+        nullable=False,
+        server_default=JobStatus.PENDING.value,
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("idx_notifications_user_id", "user_id"),
+        Index("idx_notifications_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk_column()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[NotificationStatus] = mapped_column(
+        postgres_enum(NotificationStatus, "notification_status"),
+        nullable=False,
+        server_default=NotificationStatus.UNREAD.value,
+    )
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WebhookEvent(Base):

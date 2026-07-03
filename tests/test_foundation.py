@@ -1,0 +1,114 @@
+import asyncio
+import importlib
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from src.core.config import get_settings
+from src.core.events import EventPublisher
+from src.modules.documents.storage import LocalDocumentStorage, validate_upload_file
+from src.modules.rag_chat.chunking import chunk_text
+
+
+def test_app_imports_with_routers() -> None:
+    module = importlib.import_module("src.main")
+
+    paths = set(module.app.openapi()["paths"])
+
+    assert "/api/v1/auth/health" in paths
+    assert "/api/v1/docs/health" in paths
+    assert "/api/v1/rag/health" in paths
+    assert "/api/v1/rooms/health" in paths
+
+
+def test_foundation_modules_import() -> None:
+    modules = [
+        "src.modules.auth.router",
+        "src.modules.auth.service",
+        "src.modules.auth.schemas",
+        "src.modules.documents.router",
+        "src.modules.documents.service",
+        "src.modules.documents.schemas",
+        "src.modules.documents.tasks",
+        "src.modules.flashcards.router",
+        "src.modules.flashcards.service",
+        "src.modules.flashcards.schemas",
+        "src.modules.notifications.router",
+        "src.modules.notifications.service",
+        "src.modules.notifications.schemas",
+        "src.modules.organizations.router",
+        "src.modules.organizations.service",
+        "src.modules.organizations.schemas",
+        "src.modules.rag_chat.router",
+        "src.modules.rag_chat.service",
+        "src.modules.rag_chat.vector_store",
+        "src.modules.rooms.router",
+        "src.modules.rooms.service",
+        "src.modules.rooms.schemas",
+        "src.modules.streaks.router",
+        "src.modules.streaks.service",
+        "src.modules.streaks.schemas",
+        "src.modules.webtour.router",
+        "src.modules.webtour.service",
+        "src.modules.webtour.schemas",
+        "src.infrastructure.email.sender",
+        "src.infrastructure.vectorstore.chroma_client",
+    ]
+
+    for module in modules:
+        importlib.import_module(module)
+
+
+def test_settings_defaults() -> None:
+    get_settings.cache_clear()
+    settings = get_settings()
+
+    assert settings.document_storage_backend == "local"
+    assert "pdf" in settings.allowed_document_extensions
+    assert settings.document_max_upload_bytes == 50 * 1024 * 1024
+    assert settings.broker_url.startswith("redis://")
+
+
+def test_local_storage_roundtrip(tmp_path) -> None:
+    storage = LocalDocumentStorage(base_dir=str(tmp_path))
+    path = storage.save(b"content", "notes.pdf")
+
+    assert storage.read(path) == b"content"
+
+    storage.delete(path)
+
+    assert not Path(path).exists()
+
+
+def test_upload_validation_accepts_pdf() -> None:
+    file = SimpleNamespace(filename="notes.pdf", content_type="application/pdf")
+
+    validate_upload_file(file, 1024)
+
+
+def test_upload_validation_rejects_invalid_extension() -> None:
+    file = SimpleNamespace(filename="notes.exe", content_type="application/pdf")
+
+    with pytest.raises(ValueError):
+        validate_upload_file(file, 1024)
+
+
+def test_chunk_text_is_ordered() -> None:
+    chunks = chunk_text("one two three four five", chunk_size=8, overlap=2)
+
+    assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
+    assert chunks[0].content.startswith("one")
+
+
+def test_event_publisher_runs_handlers() -> None:
+    events = []
+    publisher = EventPublisher()
+
+    async def handler(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    publisher.subscribe(handler)
+    asyncio.run(publisher.publish("study.completed", {"ok": True}))
+
+    assert events == [("study.completed", {"ok": True})]
