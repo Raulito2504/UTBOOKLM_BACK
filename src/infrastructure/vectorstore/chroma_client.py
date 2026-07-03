@@ -24,6 +24,33 @@ class VectorStoreClient:
         self._collection = client.get_or_create_collection(self.collection_name)
         return self._collection
 
+    def add_texts(
+        self,
+        *,
+        ids: list[str],
+        texts: list[str],
+        metadatas: list[dict[str, Any]],
+        embeddings: list[list[float]] | None = None,
+    ) -> list[str]:
+        collection = self.collection()
+        if collection is None or not ids:
+            return []
+
+        payload: dict[str, Any] = {
+            "ids": ids,
+            "documents": texts,
+            "metadatas": metadatas,
+        }
+        if embeddings is not None:
+            payload["embeddings"] = embeddings
+        collection.add(**payload)
+        return ids
+
+    def delete(self, ids: list[str]) -> None:
+        collection = self.collection()
+        if collection is not None and ids:
+            collection.delete(ids=ids)
+
 
 def get_vector_store(collection_name: str = "documents") -> VectorStoreClient:
     return VectorStoreClient(collection_name=collection_name)

@@ -29,3 +29,27 @@ class IngestionJobResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentUploadResponse(BaseModel):
+    document: DocumentResponse
+    ingestion_job: IngestionJobResponse
+
+
+class DocumentListResponse(BaseModel):
+    items: list[DocumentResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class DocumentDetailResponse(BaseModel):
+    document: DocumentResponse
+    chunk_count: int
+    ingestion_job: IngestionJobResponse | None = None
+
+
+class DocumentStatusResponse(BaseModel):
+    document_id: UUID
+    status: DocumentStatus
+    ingestion_job: IngestionJobResponse | None = None

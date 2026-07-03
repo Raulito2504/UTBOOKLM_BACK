@@ -1,6 +1,8 @@
 import uuid
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
@@ -78,6 +80,41 @@ async def list_documents_by_organization(
     return list(result.scalars().all())
 
 
+async def count_documents_by_organization(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(func.count(Document.id)).where(
+            Document.organization_id == organization_id,
+        ),
+    )
+    return int(result.scalar_one())
+
+
+async def update_document_status(
+    db: AsyncSession,
+    *,
+    document: Document,
+    status: DocumentStatus,
+) -> Document:
+    document.status = status
+    await db.flush()
+    return document
+
+
+async def update_document_page_count(
+    db: AsyncSession,
+    *,
+    document: Document,
+    page_count: int,
+) -> Document:
+    document.page_count = page_count
+    await db.flush()
+    return document
+
+
 async def create_document_chunk(
     db: AsyncSession,
     *,
@@ -114,6 +151,17 @@ async def list_document_chunks(
     return list(result.scalars().all())
 
 
+async def delete_document_chunks(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> None:
+    await db.execute(
+        delete(DocumentChunk).where(DocumentChunk.document_id == document_id),
+    )
+    await db.flush()
+
+
 async def create_ingestion_job(
     db: AsyncSession,
     *,
@@ -132,3 +180,42 @@ async def create_ingestion_job(
     db.add(job)
     await db.flush()
     return job
+
+
+async def get_latest_ingestion_job(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> IngestionJob | None:
+    result = await db.execute(
+        select(IngestionJob)
+        .where(IngestionJob.document_id == document_id)
+        .order_by(IngestionJob.created_at.desc()),
+    )
+    return result.scalars().first()
+
+
+async def update_ingestion_job_status(
+    db: AsyncSession,
+    *,
+    job: IngestionJob,
+    status: JobStatus,
+    error_message: str | None = None,
+) -> IngestionJob:
+    job.status = status
+    job.error_message = error_message
+    if status == JobStatus.PROCESSING:
+        job.started_at = datetime.now(UTC)
+    if status in {JobStatus.COMPLETED, JobStatus.FAILED}:
+        job.finished_at = datetime.now(UTC)
+    await db.flush()
+    return job
+
+
+async def delete_document(
+    db: AsyncSession,
+    *,
+    document: Document,
+) -> None:
+    await db.delete(document)
+    await db.flush()
