@@ -1,0 +1,29 @@
+from pathlib import Path
+from typing import Any
+
+from src.core.config import get_settings
+
+
+class VectorStoreClient:
+    def __init__(self, collection_name: str = "documents") -> None:
+        self.collection_name = collection_name
+        self._collection: Any | None = None
+
+    def collection(self) -> Any | None:
+        if self._collection is not None:
+            return self._collection
+
+        try:
+            import chromadb
+        except ImportError:
+            return None
+
+        settings = get_settings()
+        Path(settings.chroma_persist_dir).mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+        self._collection = client.get_or_create_collection(self.collection_name)
+        return self._collection
+
+
+def get_vector_store(collection_name: str = "documents") -> VectorStoreClient:
+    return VectorStoreClient(collection_name=collection_name)

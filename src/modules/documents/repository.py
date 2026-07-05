@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Document, DocumentChunk, DocumentStatus
+from src.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
 
 
 async def create_document(
@@ -15,6 +15,9 @@ async def create_document(
     file_path: str,
     file_size_bytes: int,
     page_count: int,
+    original_filename: str | None = None,
+    mime_type: str | None = None,
+    storage_backend: str = "local",
     status: DocumentStatus = DocumentStatus.PROCESSING,
 ) -> Document:
     document = Document(
@@ -22,6 +25,9 @@ async def create_document(
         uploaded_by_user_id=uploaded_by_user_id,
         title=title,
         file_path=file_path,
+        original_filename=original_filename,
+        mime_type=mime_type,
+        storage_backend=storage_backend,
         file_size_bytes=file_size_bytes,
         page_count=page_count,
         status=status,
@@ -40,15 +46,34 @@ async def get_document(
     return result.scalar_one_or_none()
 
 
+async def get_document_by_organization(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> Document | None:
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.organization_id == organization_id,
+        ),
+    )
+    return result.scalar_one_or_none()
+
+
 async def list_documents_by_organization(
     db: AsyncSession,
     *,
     organization_id: uuid.UUID,
+    limit: int = 20,
+    offset: int = 0,
 ) -> list[Document]:
     result = await db.execute(
         select(Document)
         .where(Document.organization_id == organization_id)
-        .order_by(Document.created_at.desc()),
+        .order_by(Document.created_at.desc())
+        .limit(limit)
+        .offset(offset),
     )
     return list(result.scalars().all())
 
@@ -87,3 +112,23 @@ async def list_document_chunks(
         .order_by(DocumentChunk.chunk_index),
     )
     return list(result.scalars().all())
+
+
+async def create_ingestion_job(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+    original_filename: str | None = None,
+    mime_type: str | None = None,
+    storage_backend: str = "local",
+) -> IngestionJob:
+    job = IngestionJob(
+        document_id=document_id,
+        original_filename=original_filename,
+        mime_type=mime_type,
+        storage_backend=storage_backend,
+        status=JobStatus.PENDING,
+    )
+    db.add(job)
+    await db.flush()
+    return job

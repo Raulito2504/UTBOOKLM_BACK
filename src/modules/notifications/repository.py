@@ -4,7 +4,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import WebhookEvent
+from src.models import Notification, WebhookEvent
 
 
 async def create_webhook_event(
@@ -35,3 +35,22 @@ async def list_webhook_events(
         .order_by(WebhookEvent.created_at.desc()),
     )
     return list(result.scalars().all())
+
+
+async def create_notification(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    title: str,
+    body: str,
+    payload: dict[str, Any] | None = None,
+) -> Notification:
+    notification = Notification(
+        user_id=user_id,
+        title=title,
+        body=body,
+        payload=payload,
+    )
+    db.add(notification)
+    await db.flush()
+    return notification
