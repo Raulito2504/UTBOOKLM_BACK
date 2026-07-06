@@ -1,4 +1,5 @@
 from src.core.database import Base
+from src.models import UserRole
 import src.models  # noqa: F401
 
 
@@ -32,3 +33,7 @@ def test_models_register_expected_tables() -> None:
     }
 
     assert expected_tables.issubset(Base.metadata.tables)
+
+
+def test_user_role_values_match_product_roles() -> None:
+    assert {role.value for role in UserRole} == {"admin", "teacher", "student"}

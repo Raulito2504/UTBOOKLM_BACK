@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "UTBookLM"
     app_version: str = "1.0.0"
+    app_env: str = Field("development", alias="APP_ENV")
+    log_level: str | None = Field(None, alias="LOG_LEVEL")
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = Field("http://localhost:3000", alias="CORS_ORIGINS")
 
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
         30,
         alias="PASSWORD_RESET_TOKEN_EXPIRE_MINUTES",
     )
+    auth_enabled: bool = Field(False, alias="AUTH_ENABLED")
 
     document_storage_backend: str = Field("local", alias="DOCUMENT_STORAGE_BACKEND")
     document_storage_dir: str = Field("storage/documents", alias="DOCUMENT_STORAGE_DIR")
@@ -123,6 +126,20 @@ class Settings(BaseSettings):
     @property
     def result_backend_url(self) -> str:
         return self.celery_result_backend or self.redis_url
+
+    @computed_field
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    @computed_field
+    @property
+    def effective_log_level(self) -> str:
+        if self.log_level:
+            return self.log_level.upper()
+        if self.is_production:
+            return "WARNING"
+        return "INFO"
 
 
 @lru_cache
