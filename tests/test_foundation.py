@@ -26,6 +26,8 @@ def test_app_imports_with_routers() -> None:
     assert "/api/v1/auth/logout" in paths
     assert "/api/v1/auth/password/forgot" in paths
     assert "/api/v1/auth/password/reset" in paths
+    assert "/api/v1/auth/google/login" in paths
+    assert "/api/v1/auth/google/callback" in paths
     assert "/api/v1/users/me" in paths
     assert "patch" in module.app.openapi()["paths"]["/api/v1/users/me"]
     assert "put" in module.app.openapi()["paths"]["/api/v1/users/me"]
@@ -42,6 +44,7 @@ def test_foundation_modules_import() -> None:
     modules = [
         "src.modules.auth.router",
         "src.modules.auth.service",
+        "src.modules.auth.google_oauth",
         "src.modules.auth.schemas",
         "src.modules.admin.router",
         "src.modules.admin.repository",
@@ -87,12 +90,31 @@ def test_settings_defaults(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("LOG_LEVEL", "")
     monkeypatch.setenv("AUTH_ENABLED", "false")
+    monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://localhost:8000/api/v1/auth/google/callback",
+    )
+    monkeypatch.setenv(
+        "FRONTEND_AUTH_CALLBACK_URL",
+        "http://localhost:3000/auth/callback",
+    )
 
     get_settings.cache_clear()
     settings = get_settings()
 
     assert settings.app_env == "development"
     assert settings.auth_enabled is False
+    assert settings.google_auth_enabled is True
+    assert settings.google_client_id == "google-client-id"
+    assert settings.google_client_secret == "google-client-secret"
+    assert (
+        settings.google_redirect_uri
+        == "http://localhost:8000/api/v1/auth/google/callback"
+    )
+    assert settings.frontend_auth_callback_url == "http://localhost:3000/auth/callback"
     assert settings.effective_log_level == "INFO"
     assert settings.document_storage_backend == "local"
     assert "pdf" in settings.allowed_document_extensions

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Cookie, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import IntegrityError
 
 from src.api.v1.dependencies import CurrentUser, DatabaseSession
 from src.core.config import get_settings
 from src.core.exceptions import AppError
-from src.modules.auth import service
+from src.modules.auth import google_oauth, service
 from src.modules.auth.schemas import (
     AccessTokenResponse,
     LoginRequest,
@@ -20,11 +21,136 @@ from src.modules.auth.schemas import (
 
 
 router = APIRouter()
+GOOGLE_OAUTH_STATE_COOKIE = "utbooklm_google_oauth_state"
 
 
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"module": "auth", "status": "ready"}
+
+
+@router.get("/google/login")
+async def google_login() -> RedirectResponse:
+    settings = get_settings()
+    try:
+        authorization_url, state_token = google_oauth.create_google_authorization_url(
+            settings,
+        )
+    except google_oauth.GoogleAuthDisabledError:
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code="google_auth_disabled",
+            message="Google authentication is disabled",
+        ) from None
+    except google_oauth.GoogleAuthConfigMissingError:
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code="google_auth_config_missing",
+            message="Google authentication is not configured",
+        ) from None
+
+    response = RedirectResponse(authorization_url)
+    response.set_cookie(
+        GOOGLE_OAUTH_STATE_COOKIE,
+        state_token,
+        max_age=600,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+    )
+    return response
+
+
+@router.get("/google/callback")
+async def google_callback(
+    db: DatabaseSession,
+    code: str | None = None,
+    state: str | None = None,
+    stored_state: str | None = Cookie(
+        None,
+        alias=GOOGLE_OAUTH_STATE_COOKIE,
+    ),
+) -> RedirectResponse:
+    if not code:
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="google_auth_code_invalid",
+            message="Invalid Google authentication code",
+        )
+    if not state or not stored_state or state != stored_state:
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="google_auth_state_invalid",
+            message="Invalid Google authentication state",
+        )
+
+    settings = get_settings()
+    try:
+        profile = await google_oauth.fetch_google_profile(settings, code=code)
+        login_result = await google_oauth.login_or_create_google_user(
+            db,
+            profile=profile,
+        )
+        await db.commit()
+        await db.refresh(login_result.user)
+    except google_oauth.GoogleAuthDisabledError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code="google_auth_disabled",
+            message="Google authentication is disabled",
+        ) from None
+    except google_oauth.GoogleAuthConfigMissingError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_code="google_auth_config_missing",
+            message="Google authentication is not configured",
+        ) from None
+    except google_oauth.GoogleAuthCodeInvalidError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="google_auth_code_invalid",
+            message="Invalid Google authentication code",
+        ) from None
+    except google_oauth.GoogleProfileInvalidError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="google_profile_invalid",
+            message="Google profile is invalid",
+        ) from None
+    except google_oauth.GoogleEmailNotVerifiedError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="google_email_not_verified",
+            message="Google email is not verified",
+        ) from None
+    except google_oauth.GoogleUserInactiveError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code="google_user_inactive",
+            message="Google user is inactive",
+        ) from None
+    except IntegrityError:
+        await db.rollback()
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code="resource_conflict",
+            message="Could not create account with the provided Google profile",
+        ) from None
+
+    redirect_url = google_oauth.build_frontend_auth_redirect_url(
+        settings,
+        access_token=login_result.access_token,
+        refresh_token=login_result.refresh_token,
+    )
+    response = RedirectResponse(redirect_url)
+    response.delete_cookie(GOOGLE_OAUTH_STATE_COOKIE)
+    return response
 
 
 @router.post(

@@ -31,6 +31,20 @@ class Settings(BaseSettings):
         alias="PASSWORD_RESET_TOKEN_EXPIRE_MINUTES",
     )
     auth_enabled: bool = Field(False, alias="AUTH_ENABLED")
+    google_auth_enabled: bool = Field(False, alias="GOOGLE_AUTH_ENABLED")
+    google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str | None = Field(
+        None,
+        alias="GOOGLE_CLIENT_SECRET",
+    )
+    google_redirect_uri: str | None = Field(
+        None,
+        alias="GOOGLE_REDIRECT_URI",
+    )
+    frontend_auth_callback_url: str = Field(
+        "http://localhost:3000/auth/callback",
+        alias="FRONTEND_AUTH_CALLBACK_URL",
+    )
 
     document_storage_backend: str = Field("local", alias="DOCUMENT_STORAGE_BACKEND")
     document_storage_dir: str = Field("storage/documents", alias="DOCUMENT_STORAGE_DIR")
