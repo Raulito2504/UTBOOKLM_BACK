@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
+import logging
 import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,9 @@ from src.core.security import (
 from src.infrastructure.email.sender import EmailMessage, get_email_sender
 from src.models import PasswordResetToken, RefreshToken, User
 from src.modules.auth import repository
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmailAlreadyRegisteredError(Exception):
@@ -48,6 +53,21 @@ class PasswordResetTokenUsedError(Exception):
 def organization_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or uuid.uuid4().hex
+
+
+def build_password_reset_url(base_url: str, token: str) -> str:
+    parts = urlsplit(base_url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["token"] = token
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(query),
+            parts.fragment,
+        )
+    )
 
 
 async def register_user(
@@ -178,13 +198,22 @@ async def request_password_reset(
     )
 
     sender = get_email_sender()
-    await sender.send(
+    reset_url = build_password_reset_url(settings.frontend_password_reset_url, token)
+    email_sent = await sender.send(
         EmailMessage(
             to=user.email,
             subject="Reset your UTBookLM password",
-            body=f"Use this password reset token: {token}",
+            body=(
+                "Use this link to reset your UTBookLM password:\n\n"
+                f"{reset_url}\n\n"
+                "This link expires in "
+                f"{settings.password_reset_token_expire_minutes} minutes."
+            ),
+            to_name=user.name,
         ),
     )
+    if not email_sent:
+        logger.warning("Password reset email was not delivered")
     return token
 
 

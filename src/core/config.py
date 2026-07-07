@@ -78,7 +78,15 @@ class Settings(BaseSettings):
     smtp_port: int = Field(587, alias="SMTP_PORT")
     smtp_user: str | None = Field(None, alias="SMTP_USER")
     smtp_password: str | None = Field(None, alias="SMTP_PASSWORD")
+    email_enabled: bool = Field(False, alias="EMAIL_ENABLED")
+    email_provider: str = Field("brevo", alias="EMAIL_PROVIDER")
     email_from: str = Field("noreply@example.com", alias="EMAIL_FROM")
+    email_from_name: str = Field("UTBookLM", alias="EMAIL_FROM_NAME")
+    frontend_password_reset_url: str = Field(
+        "http://localhost:3000/reset-password",
+        alias="FRONTEND_PASSWORD_RESET_URL",
+    )
+    brevo_api_key: str | None = Field(None, alias="BREVO_API_KEY")
 
     websocket_token_expire_minutes: int = Field(
         5,
