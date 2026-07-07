@@ -31,9 +31,9 @@ class PlanType(str, enum.Enum):
 
 
 class UserRole(str, enum.Enum):
-    OWNER = "owner"
     ADMIN = "admin"
-    MEMBER = "member"
+    TEACHER = "teacher"
+    STUDENT = "student"
 
 
 class DocumentStatus(str, enum.Enum):
@@ -156,7 +156,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -525,7 +525,7 @@ class OrganizationMembership(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -551,7 +551,7 @@ class OrganizationInvitation(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

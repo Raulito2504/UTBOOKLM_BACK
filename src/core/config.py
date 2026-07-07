@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "UTBookLM"
     app_version: str = "1.0.0"
+    app_env: str = Field("development", alias="APP_ENV")
+    log_level: str | None = Field(None, alias="LOG_LEVEL")
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = Field("http://localhost:3000", alias="CORS_ORIGINS")
 
@@ -27,6 +29,21 @@ class Settings(BaseSettings):
     password_reset_token_expire_minutes: int = Field(
         30,
         alias="PASSWORD_RESET_TOKEN_EXPIRE_MINUTES",
+    )
+    auth_enabled: bool = Field(False, alias="AUTH_ENABLED")
+    google_auth_enabled: bool = Field(False, alias="GOOGLE_AUTH_ENABLED")
+    google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str | None = Field(
+        None,
+        alias="GOOGLE_CLIENT_SECRET",
+    )
+    google_redirect_uri: str | None = Field(
+        None,
+        alias="GOOGLE_REDIRECT_URI",
+    )
+    frontend_auth_callback_url: str = Field(
+        "http://localhost:3000/auth/callback",
+        alias="FRONTEND_AUTH_CALLBACK_URL",
     )
 
     document_storage_backend: str = Field("local", alias="DOCUMENT_STORAGE_BACKEND")
@@ -123,6 +140,20 @@ class Settings(BaseSettings):
     @property
     def result_backend_url(self) -> str:
         return self.celery_result_backend or self.redis_url
+
+    @computed_field
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    @computed_field
+    @property
+    def effective_log_level(self) -> str:
+        if self.log_level:
+            return self.log_level.upper()
+        if self.is_production:
+            return "WARNING"
+        return "INFO"
 
 
 @lru_cache

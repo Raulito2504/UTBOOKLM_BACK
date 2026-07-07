@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 
 from src.core.security import create_access_token, decode_token, hash_password
+from src.core.security import TokenExpiredError, TokenInvalidError
 from src.core.security import verify_password
 
 
@@ -32,5 +33,10 @@ def test_create_access_token_sets_subject() -> None:
 def test_decode_token_rejects_expired_token() -> None:
     token = create_access_token("user-id", expires_delta=timedelta(seconds=-1))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TokenExpiredError):
         decode_token(token)
+
+
+def test_decode_token_rejects_invalid_token() -> None:
+    with pytest.raises(TokenInvalidError):
+        decode_token("not-a-jwt")
