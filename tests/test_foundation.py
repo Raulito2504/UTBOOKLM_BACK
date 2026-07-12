@@ -43,6 +43,14 @@ def test_app_imports_with_routers() -> None:
     assert "delete" in module.app.openapi()["paths"]["/api/v1/docs/{document_id}"]
     assert "/api/v1/docs/{document_id}/chunks" in paths
     assert "/api/v1/rag/health" in paths
+    assert "/api/v1/rag/chats" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/rag/chats"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/rag/chats"]
+    assert "/api/v1/rag/chats/{chat_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/rag/chats/{chat_id}"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/rag/chats/{chat_id}"]
+    assert "/api/v1/rag/chats/{chat_id}/messages" in paths
+    assert "/api/v1/rag/documents/{document_id}/index" in paths
     assert "/api/v1/rooms/health" in paths
 
 
@@ -125,6 +133,8 @@ def test_settings_defaults(monkeypatch) -> None:
     assert settings.document_storage_backend == "local"
     assert "pdf" in settings.allowed_document_extensions
     assert settings.document_max_upload_bytes == 50 * 1024 * 1024
+    assert settings.vector_store_provider == "chroma"
+    assert settings.rag_top_k == 5
     assert settings.broker_url.startswith("redis://")
 
 

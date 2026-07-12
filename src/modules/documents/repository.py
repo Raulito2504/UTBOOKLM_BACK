@@ -130,6 +130,17 @@ async def list_document_chunks(
     return list(result.scalars().all())
 
 
+async def update_document_chunk_vector_id(
+    db: AsyncSession,
+    *,
+    chunk: DocumentChunk,
+    vector_id: str,
+) -> DocumentChunk:
+    chunk.vector_id = vector_id
+    await db.flush()
+    return chunk
+
+
 async def delete_document_chunks(db: AsyncSession, *, document_id: uuid.UUID) -> None:
     chunks = await list_document_chunks(db, document_id=document_id)
     for chunk in chunks:
