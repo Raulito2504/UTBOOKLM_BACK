@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import json
+import re
 from typing import Protocol
 
 import httpx
@@ -37,6 +39,41 @@ class FakeEmbeddingProvider:
 
 class FakeLlmProvider:
     def complete(self, prompt: str) -> LlmResponse:
+        if '"flashcards"' in prompt:
+            count = _extract_requested_count(prompt, default=1)
+            cards = [
+                {
+                    "question": f"Pregunta de practica {index} basada en el contexto",
+                    "answer": f"Respuesta de practica {index} basada en el contexto",
+                    "difficulty": "medium",
+                }
+                for index in range(1, count + 1)
+            ]
+            return LlmResponse(
+                content=json_dumps({"flashcards": cards}),
+                tokens_used=len(prompt.split()),
+            )
+        if '"questions"' in prompt:
+            count = _extract_requested_count(prompt, default=1)
+            questions = [
+                {
+                    "question_type": "multiple_choice",
+                    "prompt": f"Pregunta de practica {index} basada en el contexto",
+                    "options": {
+                        "A": "Respuesta correcta",
+                        "B": "Distractor",
+                        "C": "Distractor",
+                        "D": "Distractor",
+                    },
+                    "correct_answer": "A",
+                    "explanation": "Explicacion fake para desarrollo local.",
+                }
+                for index in range(1, count + 1)
+            ]
+            return LlmResponse(
+                content=json_dumps({"questions": questions}),
+                tokens_used=len(prompt.split()),
+            )
         content = (
             "Respuesta fake para desarrollo local. Contexto recibido:\n\n"
             f"{prompt[:1200]}"
@@ -216,6 +253,17 @@ def get_embedding_provider() -> EmbeddingProvider:
             timeout_seconds=settings.rag_request_timeout_seconds,
         )
     raise ProviderConfigurationError(f"Unsupported embedding provider: {provider}")
+
+
+def _extract_requested_count(prompt: str, *, default: int) -> int:
+    match = re.search(r"exactamente\s+(\d+)", prompt, flags=re.IGNORECASE)
+    if match is None:
+        return default
+    return max(1, min(int(match.group(1)), 50))
+
+
+def json_dumps(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=True)
 
 
 def get_llm_provider() -> LlmProvider:
