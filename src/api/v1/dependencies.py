@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Annotated
 import uuid
-
+# Ya quedo
 from fastapi import Depends, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
