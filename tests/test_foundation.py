@@ -35,6 +35,10 @@ def test_app_imports_with_routers() -> None:
     assert "/api/v1/admin/users" in paths
     assert "/api/v1/admin/users/{user_id}" in paths
     assert "patch" in module.app.openapi()["paths"]["/api/v1/admin/users/{user_id}"]
+    assert "/api/v1/dashboard/health" in paths
+    assert "/api/v1/dashboard/metrics" in paths
+    assert "/api/v1/dashboard/activity" in paths
+    assert "/api/v1/dashboard/notebooks" in paths
     assert "/api/v1/docs/health" in paths
     assert "/api/v1/docs" in paths
     assert "post" in module.app.openapi()["paths"]["/api/v1/docs"]
@@ -85,6 +89,10 @@ def test_foundation_modules_import() -> None:
         "src.modules.admin.repository",
         "src.modules.admin.service",
         "src.modules.admin.schemas",
+        "src.modules.dashboard.router",
+        "src.modules.dashboard.repository",
+        "src.modules.dashboard.service",
+        "src.modules.dashboard.schemas",
         "src.modules.users.router",
         "src.modules.users.service",
         "src.modules.users.schemas",

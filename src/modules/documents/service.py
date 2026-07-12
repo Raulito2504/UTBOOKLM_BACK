@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Document, DocumentChunk, DocumentStatus, User
+from src.modules.dashboard import service as dashboard_service
 from src.modules.documents import repository
 from src.modules.documents.storage import DocumentStorage, validate_upload_file
 from src.modules.rag_chat.chunking import TextChunk, chunk_text
@@ -79,6 +80,16 @@ async def upload_document(
                 content=chunk.content,
                 page_number=chunk.page_number,
             )
+        await dashboard_service.record_activity(
+            db,
+            current_user=current_user,
+            activity_type="document_uploaded",
+            metadata_json={
+                "document_id": str(document.id),
+                "title": document.title,
+                "chunk_count": len(chunks),
+            },
+        )
     except Exception:
         storage.delete(file_path)
         raise

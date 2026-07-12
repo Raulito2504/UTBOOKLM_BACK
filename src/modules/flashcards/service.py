@@ -19,6 +19,7 @@ from src.models import (
     StudyProgress,
     User,
 )
+from src.modules.dashboard import service as dashboard_service
 from src.modules.documents import repository as documents_repository
 from src.modules.flashcards import repository
 from src.modules.flashcards.schemas import (
@@ -105,6 +106,16 @@ async def generate_flashcards(
             difficulty=card.difficulty,
         )
     await repository.update_deck_card_count(db, deck=deck, card_count=len(cards))
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="flashcard_deck_generated",
+        metadata_json={
+            "deck_id": str(deck.id),
+            "document_ids": [str(document_id) for document_id in document_ids],
+            "card_count": len(cards),
+        },
+    )
     return deck
 
 
@@ -162,11 +173,21 @@ async def review_flashcard(
     )
     if flashcard is None:
         raise FlashcardNotFoundError
-    return await repository.create_study_progress(
+    progress = await repository.create_study_progress(
         db,
         user_id=current_user.id,
         flashcard_id=flashcard.id,
     )
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="flashcard_review",
+        metadata_json={
+            "flashcard_id": str(flashcard.id),
+            "deck_id": str(flashcard.deck_id),
+        },
+    )
+    return progress
 
 
 async def generate_quiz(
@@ -212,6 +233,16 @@ async def generate_quiz(
             correct_answer=question.correct_answer,
             explanation=question.explanation,
         )
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="quiz_generated",
+        metadata_json={
+            "quiz_id": str(exam.id),
+            "document_ids": [str(document_id) for document_id in document_ids],
+            "question_count": len(questions),
+        },
+    )
     return exam
 
 
@@ -266,7 +297,7 @@ async def submit_quiz_answers(
     quiz = await get_quiz(db, current_user=current_user, quiz_id=quiz_id)
     questions = await repository.list_exam_questions(db, exam_id=quiz.id)
     score, feedback = _score_answers(questions=questions, answers=answers)
-    return await repository.create_exam_attempt(
+    attempt = await repository.create_exam_attempt(
         db,
         exam_id=quiz.id,
         user_id=current_user.id,
@@ -274,6 +305,17 @@ async def submit_quiz_answers(
         score=score,
         feedback=feedback,
     )
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="quiz_attempt_submitted",
+        metadata_json={
+            "quiz_id": str(quiz.id),
+            "attempt_id": str(attempt.id),
+            "score": score,
+        },
+    )
+    return attempt
 
 
 async def get_quiz_results(
