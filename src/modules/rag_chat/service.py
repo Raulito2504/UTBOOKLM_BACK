@@ -11,6 +11,7 @@ from src.models import (
     MessageRole,
     User,
 )
+from src.modules.dashboard import service as dashboard_service
 from src.modules.documents import repository as documents_repository
 from src.modules.rag_chat import repository
 from src.modules.rag_chat.llm_provider import (
@@ -64,13 +65,23 @@ async def create_chat(
         current_user=current_user,
         document_ids=document_ids,
     )
-    return await repository.create_chat_session(
+    chat = await repository.create_chat_session(
         db,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
         title=title,
         document_ids=document_ids,
     )
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="chat_created",
+        metadata_json={
+            "chat_id": str(chat.id),
+            "document_ids": [str(document_id) for document_id in document_ids],
+        },
+    )
+    return chat
 
 
 async def list_chats(
@@ -254,6 +265,18 @@ async def create_user_message_and_answer(
         answer=llm_response.content,
         sources=sources_payload,
         tokens_used=llm_response.tokens_used,
+    )
+    await dashboard_service.record_activity(
+        db,
+        current_user=current_user,
+        activity_type="rag_message_sent",
+        metadata_json={
+            "chat_id": str(chat.id),
+            "user_message_id": str(user_message.id),
+            "assistant_message_id": str(assistant_message.id),
+            "source_count": len(source_responses),
+            "tokens_used": llm_response.tokens_used,
+        },
     )
     return user_message, assistant_message, source_responses
 
