@@ -73,11 +73,27 @@ class Settings(BaseSettings):
     celery_result_backend: str | None = Field(None, alias="CELERY_RESULT_BACKEND")
 
     chroma_persist_dir: str = Field("storage/chroma", alias="CHROMA_PERSIST_DIR")
+    vector_store_provider: str = Field("chroma", alias="VECTOR_STORE_PROVIDER")
     embedding_provider: str = Field("fake", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field("text-embedding-3-small", alias="EMBEDDING_MODEL")
     llm_provider: str = Field("fake", alias="LLM_PROVIDER")
     llm_model: str = Field("gpt-4o", alias="LLM_MODEL")
     openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
+    gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")
+    google_api_key: str | None = Field(None, alias="GOOGLE_API_KEY")
+    gemini_model: str = Field("gemini-1.5-flash", alias="GEMINI_MODEL")
+    gemini_embedding_model: str = Field(
+        "text-embedding-004",
+        alias="GEMINI_EMBEDDING_MODEL",
+    )
+    rag_top_k: int = Field(5, alias="RAG_TOP_K")
+    rag_max_context_chars: int = Field(12000, alias="RAG_MAX_CONTEXT_CHARS")
+    rag_request_timeout_seconds: int = Field(
+        60,
+        alias="RAG_REQUEST_TIMEOUT_SECONDS",
+    )
+    rag_max_question_chars: int = Field(4000, alias="RAG_MAX_QUESTION_CHARS")
+    rag_max_chat_documents: int = Field(10, alias="RAG_MAX_CHAT_DOCUMENTS")
 
     smtp_host: str | None = Field(None, alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")
