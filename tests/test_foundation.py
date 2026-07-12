@@ -51,6 +51,27 @@ def test_app_imports_with_routers() -> None:
     assert "delete" in module.app.openapi()["paths"]["/api/v1/rag/chats/{chat_id}"]
     assert "/api/v1/rag/chats/{chat_id}/messages" in paths
     assert "/api/v1/rag/documents/{document_id}/index" in paths
+    assert "/api/v1/flashcards/health" in paths
+    assert "/api/v1/flashcards/generate" in paths
+    assert "/api/v1/flashcards/decks" in paths
+    assert "/api/v1/flashcards/decks/{deck_id}" in paths
+    assert "/api/v1/flashcards/decks/{deck_id}/cards" in paths
+    assert "/api/v1/flashcards/{flashcard_id}/reviews" in paths
+    assert "/api/v1/flashcards/quizzes/generate" in paths
+    assert "/api/v1/flashcards/quizzes" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/questions" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/answers" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/results" in paths
+    assert "/api/v1/flashcard-decks" in paths
+    assert "/api/v1/flashcard-decks/{deck_id}" in paths
+    assert "/api/v1/flashcard-decks/{deck_id}/cards" in paths
+    assert "/api/v1/quizzes/generate" in paths
+    assert "/api/v1/quizzes" in paths
+    assert "/api/v1/quizzes/{quiz_id}" in paths
+    assert "/api/v1/quizzes/{quiz_id}/questions" in paths
+    assert "/api/v1/quizzes/{quiz_id}/answers" in paths
+    assert "/api/v1/quizzes/{quiz_id}/results" in paths
     assert "/api/v1/rooms/health" in paths
 
 
