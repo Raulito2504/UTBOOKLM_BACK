@@ -36,6 +36,12 @@ def test_app_imports_with_routers() -> None:
     assert "/api/v1/admin/users/{user_id}" in paths
     assert "patch" in module.app.openapi()["paths"]["/api/v1/admin/users/{user_id}"]
     assert "/api/v1/docs/health" in paths
+    assert "/api/v1/docs" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/docs"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/docs"]
+    assert "/api/v1/docs/{document_id}" in paths
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/docs/{document_id}"]
+    assert "/api/v1/docs/{document_id}/chunks" in paths
     assert "/api/v1/rag/health" in paths
     assert "/api/v1/rooms/health" in paths
 

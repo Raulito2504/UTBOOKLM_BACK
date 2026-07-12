@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     minio_access_key: str = Field("minioadmin", alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field("minioadmin", alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field("documents", alias="MINIO_BUCKET")
+    s3_endpoint_url: str | None = Field(None, alias="S3_ENDPOINT_URL")
+    s3_access_key_id: str | None = Field(None, alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str | None = Field(None, alias="S3_SECRET_ACCESS_KEY")
+    s3_bucket: str | None = Field(None, alias="S3_BUCKET")
+    s3_region_name: str | None = Field(None, alias="S3_REGION_NAME")
 
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
     celery_broker_url: str | None = Field(None, alias="CELERY_BROKER_URL")

@@ -78,6 +78,22 @@ async def list_documents_by_organization(
     return list(result.scalars().all())
 
 
+async def update_document_status(
+    db: AsyncSession,
+    *,
+    document: Document,
+    status: DocumentStatus,
+) -> Document:
+    document.status = status
+    await db.flush()
+    return document
+
+
+async def delete_document(db: AsyncSession, *, document: Document) -> None:
+    await db.delete(document)
+    await db.flush()
+
+
 async def create_document_chunk(
     db: AsyncSession,
     *,
@@ -112,6 +128,13 @@ async def list_document_chunks(
         .order_by(DocumentChunk.chunk_index),
     )
     return list(result.scalars().all())
+
+
+async def delete_document_chunks(db: AsyncSession, *, document_id: uuid.UUID) -> None:
+    chunks = await list_document_chunks(db, document_id=document_id)
+    for chunk in chunks:
+        await db.delete(chunk)
+    await db.flush()
 
 
 async def create_ingestion_job(

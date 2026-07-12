@@ -21,6 +21,19 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentChunkResponse(BaseModel):
+    id: UUID
+    document_id: UUID
+    chunk_index: int
+    content: str
+    page_number: int | None = None
+    vector_id: str | None = None
+    tokens: int | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class IngestionJobResponse(BaseModel):
     id: UUID
     document_id: UUID
