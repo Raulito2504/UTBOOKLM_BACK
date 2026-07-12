@@ -39,6 +39,15 @@ def test_app_imports_with_routers() -> None:
     assert "/api/v1/dashboard/metrics" in paths
     assert "/api/v1/dashboard/activity" in paths
     assert "/api/v1/dashboard/notebooks" in paths
+    assert "/api/v1/notebooks/health" in paths
+    assert "/api/v1/notebooks" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/notebooks"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/notebooks"]
+    assert "/api/v1/notebooks/{notebook_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}"]
+    assert "/api/v1/notebooks/{notebook_id}/sources" in paths
+    assert "/api/v1/notebooks/{notebook_id}/messages" in paths
     assert "/api/v1/docs/health" in paths
     assert "/api/v1/docs" in paths
     assert "post" in module.app.openapi()["paths"]["/api/v1/docs"]
@@ -106,6 +115,8 @@ def test_foundation_modules_import() -> None:
         "src.modules.notifications.router",
         "src.modules.notifications.service",
         "src.modules.notifications.schemas",
+        "src.modules.notebooks.router",
+        "src.modules.notebooks.schemas",
         "src.modules.organizations.router",
         "src.modules.organizations.service",
         "src.modules.organizations.schemas",
