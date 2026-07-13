@@ -22,10 +22,14 @@ async def create_deck(
     user_id: uuid.UUID,
     name: str,
     document_id: uuid.UUID | None = None,
+    document_ids: list[uuid.UUID] | None = None,
+    notebook_id: uuid.UUID | None = None,
 ) -> FlashcardDeck:
     deck = FlashcardDeck(
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids or [],
+        notebook_id=notebook_id,
         name=name,
     )
     db.add(deck)
@@ -153,8 +157,16 @@ async def create_exam(
     user_id: uuid.UUID,
     title: str,
     document_id: uuid.UUID | None = None,
+    document_ids: list[uuid.UUID] | None = None,
+    notebook_id: uuid.UUID | None = None,
 ) -> Exam:
-    exam = Exam(user_id=user_id, title=title, document_id=document_id)
+    exam = Exam(
+        user_id=user_id,
+        title=title,
+        document_id=document_id,
+        document_ids=document_ids or [],
+        notebook_id=notebook_id,
+    )
     db.add(exam)
     await db.flush()
     return exam

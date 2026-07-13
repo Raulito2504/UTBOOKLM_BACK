@@ -105,7 +105,9 @@ class OpenAIEmbeddingProvider:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise ProviderRequestError("OpenAI embeddings request failed") from exc
+            raise ProviderRequestError(
+                _http_error_message("OpenAI embeddings request failed", exc),
+            ) from exc
 
         payload = response.json()
         data = sorted(payload.get("data", []), key=lambda item: item.get("index", 0))
@@ -134,7 +136,9 @@ class OpenAILlmProvider:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise ProviderRequestError("OpenAI response request failed") from exc
+            raise ProviderRequestError(
+                _http_error_message("OpenAI response request failed", exc),
+            ) from exc
 
         payload = response.json()
         usage = payload.get("usage") or {}
@@ -166,34 +170,32 @@ class GeminiEmbeddingProvider:
         if not texts:
             return []
         model_name = f"models/{self.model}"
-        requests = [
-            {
-                "model": model_name,
-                "content": {"parts": [{"text": text}]},
-            }
-            for text in texts
-        ]
-        try:
-            response = httpx.post(
-                (
-                    "https://generativelanguage.googleapis.com/v1beta/"
-                    f"{model_name}:batchEmbedContents?key={self.api_key}"
-                ),
-                json={"requests": requests},
-                timeout=self.timeout_seconds,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise ProviderRequestError("Gemini embeddings request failed") from exc
+        embeddings: list[list[float]] = []
+        for text in texts:
+            try:
+                response = httpx.post(
+                    (
+                        "https://generativelanguage.googleapis.com/v1beta/"
+                        f"{model_name}:embedContent?key={self.api_key}"
+                    ),
+                    json={
+                        "model": model_name,
+                        "content": {"parts": [{"text": text}]},
+                    },
+                    timeout=self.timeout_seconds,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise ProviderRequestError(
+                    _http_error_message("Gemini embeddings request failed", exc),
+                ) from exc
 
-        payload = response.json()
-        return [
-            item["values"]
-            for item in (
-                embedding.get("embedding", {})
-                for embedding in payload.get("embeddings", [])
-            )
-        ]
+            payload = response.json()
+            values = (payload.get("embedding") or {}).get("values")
+            if not values:
+                raise ProviderRequestError("Gemini embeddings response was empty")
+            embeddings.append(values)
+        return embeddings
 
 
 class GeminiLlmProvider:
@@ -220,7 +222,9 @@ class GeminiLlmProvider:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise ProviderRequestError("Gemini generation request failed") from exc
+            raise ProviderRequestError(
+                _http_error_message("Gemini generation request failed", exc),
+            ) from exc
 
         payload = response.json()
         usage = payload.get("usageMetadata") or {}
@@ -299,6 +303,17 @@ def _extract_openai_text(payload: dict) -> str:
             if text:
                 parts.append(text)
     return "\n".join(parts).strip()
+
+
+def _http_error_message(prefix: str, exc: httpx.HTTPError) -> str:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return f"{prefix}: {exc.__class__.__name__}"
+
+    body = response.text.strip().replace("\n", " ")
+    if len(body) > 500:
+        body = f"{body[:500]}..."
+    return f"{prefix}: HTTP {response.status_code} {body}"
 
 
 def _extract_gemini_text(payload: dict) -> str:

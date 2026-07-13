@@ -41,20 +41,23 @@ class DocumentVectorStore:
             raise ValueError("Chunks and embeddings length mismatch")
 
         ids = [str(chunk.id) for chunk in chunks]
-        collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=[chunk.content for chunk in chunks],
-            metadatas=[
-                {
-                    "organization_id": str(organization_id),
-                    "document_id": str(chunk.document_id),
-                    "chunk_id": str(chunk.id),
-                    "page_number": chunk.page_number or 0,
-                }
-                for chunk in chunks
-            ],
-        )
+        try:
+            collection.upsert(
+                ids=ids,
+                embeddings=embeddings,
+                documents=[chunk.content for chunk in chunks],
+                metadatas=[
+                    {
+                        "organization_id": str(organization_id),
+                        "document_id": str(chunk.document_id),
+                        "chunk_id": str(chunk.id),
+                        "page_number": chunk.page_number or 0,
+                    }
+                    for chunk in chunks
+                ],
+            )
+        except Exception as exc:
+            raise VectorStoreUnavailableError(str(exc)) from exc
         return ids
 
     def search(
@@ -75,12 +78,15 @@ class DocumentVectorStore:
             organization_id=organization_id,
             document_ids=document_ids,
         )
-        response = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            where=where,
-            include=["documents", "metadatas", "distances"],
-        )
+        try:
+            response = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                where=where,
+                include=["documents", "metadatas", "distances"],
+            )
+        except Exception as exc:
+            raise VectorStoreUnavailableError(str(exc)) from exc
 
         ids = response.get("ids", [[]])[0]
         documents = response.get("documents", [[]])[0]

@@ -68,6 +68,7 @@ async def generate_flashcards(
     *,
     current_user: User,
     document_ids: list[uuid.UUID],
+    notebook_id: uuid.UUID | None = None,
     count: int,
     difficulty: FlashcardDifficulty,
     deck_name: str | None = None,
@@ -95,6 +96,8 @@ async def generate_flashcards(
         db,
         user_id=current_user.id,
         document_id=documents[0].id if len(documents) == 1 else None,
+        document_ids=[document.id for document in documents],
+        notebook_id=notebook_id,
         name=deck_name or _default_deck_name(documents),
     )
     for card in cards:
@@ -112,6 +115,7 @@ async def generate_flashcards(
         activity_type="flashcard_deck_generated",
         metadata_json={
             "deck_id": str(deck.id),
+            "notebook_id": str(notebook_id) if notebook_id else None,
             "document_ids": [str(document_id) for document_id in document_ids],
             "card_count": len(cards),
         },
@@ -195,6 +199,7 @@ async def generate_quiz(
     *,
     current_user: User,
     document_ids: list[uuid.UUID],
+    notebook_id: uuid.UUID | None,
     title: str | None,
     question_count: int,
     question_types: list[ExamQuestionType],
@@ -221,6 +226,8 @@ async def generate_quiz(
         db,
         user_id=current_user.id,
         document_id=documents[0].id if len(documents) == 1 else None,
+        document_ids=[document.id for document in documents],
+        notebook_id=notebook_id,
         title=title or _default_quiz_title(documents),
     )
     for question in questions:
@@ -239,6 +246,7 @@ async def generate_quiz(
         activity_type="quiz_generated",
         metadata_json={
             "quiz_id": str(exam.id),
+            "notebook_id": str(notebook_id) if notebook_id else None,
             "document_ids": [str(document_id) for document_id in document_ids],
             "question_count": len(questions),
         },

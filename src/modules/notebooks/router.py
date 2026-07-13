@@ -1,4 +1,5 @@
 from typing import Annotated
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -23,6 +24,7 @@ from src.modules.rag_chat.schemas import (
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
@@ -276,6 +278,7 @@ async def create_notebook_message(
         ) from None
     except rag_service.RagDependencyError as exc:
         await db.rollback()
+        logger.exception("Notebook RAG dependency failed")
         raise AppError(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             error_code="dependency_unavailable",

@@ -19,6 +19,7 @@ class FlashcardPayload(BaseModel):
 
 class FlashcardGenerateRequest(BaseModel):
     document_ids: list[UUID] = Field(..., min_length=1, max_length=10)
+    notebook_id: UUID | None = None
     count: int = Field(10, ge=1, le=50)
     difficulty: FlashcardDifficulty = FlashcardDifficulty.MEDIUM
     deck_name: str | None = Field(None, min_length=1, max_length=255)
@@ -28,6 +29,8 @@ class FlashcardDeckResponse(BaseModel):
     id: UUID
     name: str
     document_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    notebook_id: UUID | None = None
     card_count: int
     created_at: datetime
 
@@ -88,6 +91,7 @@ class QuizPayload(BaseModel):
 
 class QuizGenerateRequest(BaseModel):
     document_ids: list[UUID] = Field(..., min_length=1, max_length=10)
+    notebook_id: UUID | None = None
     title: str | None = Field(None, min_length=1, max_length=255)
     question_count: int = Field(10, ge=1, le=50)
     question_types: list[ExamQuestionType] = Field(
@@ -109,6 +113,8 @@ class QuizResponse(BaseModel):
     id: UUID
     title: str
     document_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    notebook_id: UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

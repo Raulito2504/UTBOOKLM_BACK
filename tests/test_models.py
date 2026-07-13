@@ -37,3 +37,13 @@ def test_models_register_expected_tables() -> None:
 
 def test_user_role_values_match_product_roles() -> None:
     assert {role.value for role in UserRole} == {"admin", "teacher", "student"}
+
+
+def test_study_practice_artifacts_track_notebook_and_documents() -> None:
+    flashcard_columns = Base.metadata.tables["flashcard_decks"].columns
+    exam_columns = Base.metadata.tables["exams"].columns
+
+    assert "document_ids" in flashcard_columns
+    assert "notebook_id" in flashcard_columns
+    assert "document_ids" in exam_columns
+    assert "notebook_id" in exam_columns
