@@ -50,13 +50,19 @@ class Settings(BaseSettings):
     document_storage_dir: str = Field("storage/documents", alias="DOCUMENT_STORAGE_DIR")
     document_max_upload_mb: int = Field(50, alias="DOCUMENT_MAX_UPLOAD_MB")
     document_allowed_extensions: str = Field(
-        "pdf,pptx",
+        "pdf,pptx,md,txt",
         alias="DOCUMENT_ALLOWED_EXTENSIONS",
     )
     document_allowed_mime_types: str = Field(
-        "application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown",
         alias="DOCUMENT_ALLOWED_MIME_TYPES",
     )
+    document_max_pages: int = Field(300, alias="DOCUMENT_MAX_PAGES")
+    document_max_slides: int = Field(250, alias="DOCUMENT_MAX_SLIDES")
+    document_max_text_chars: int = Field(600000, alias="DOCUMENT_MAX_TEXT_CHARS")
+    document_max_chunks: int = Field(1000, alias="DOCUMENT_MAX_CHUNKS")
+    document_chunk_size: int = Field(2200, alias="DOCUMENT_CHUNK_SIZE")
+    document_chunk_overlap: int = Field(250, alias="DOCUMENT_CHUNK_OVERLAP")
 
     minio_endpoint: str = Field("http://localhost:9000", alias="MINIO_ENDPOINT")
     minio_access_key: str = Field("minioadmin", alias="MINIO_ACCESS_KEY")

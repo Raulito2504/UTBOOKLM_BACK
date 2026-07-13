@@ -7,7 +7,10 @@ from src.api.v1.dependencies import CurrentUser, DatabaseSession, pagination_par
 from src.core.exceptions import AppError
 from src.modules.dashboard import service as dashboard_service
 from src.modules.dashboard.schemas import NotebookCardResponse
-from src.modules.notebooks.schemas import NotebookSourcesUpdateRequest
+from src.modules.notebooks.schemas import (
+    NotebookSourceResponse,
+    NotebookSourcesUpdateRequest,
+)
 from src.modules.rag_chat import service as rag_service
 from src.modules.rag_chat.schemas import (
     ChatCreateRequest,
@@ -155,6 +158,46 @@ async def add_notebook_sources(
         await db.rollback()
         raise _document_not_ready_error() from None
     return ChatResponse.model_validate(notebook)
+
+
+@router.get("/{notebook_id}/sources", response_model=list[NotebookSourceResponse])
+async def list_notebook_sources(
+    notebook_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+) -> list[NotebookSourceResponse]:
+    try:
+        documents = await rag_service.list_chat_sources(
+            db,
+            current_user=current_user,
+            chat_id=notebook_id,
+        )
+    except rag_service.ChatNotFoundError:
+        raise _notebook_not_found_error() from None
+    return [NotebookSourceResponse.model_validate(document) for document in documents]
+
+
+@router.delete(
+    "/{notebook_id}/sources/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_notebook_source(
+    notebook_id: UUID,
+    document_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+) -> None:
+    try:
+        await rag_service.remove_chat_source(
+            db,
+            current_user=current_user,
+            chat_id=notebook_id,
+            document_id=document_id,
+        )
+        await db.commit()
+    except rag_service.ChatNotFoundError:
+        await db.rollback()
+        raise _notebook_not_found_error() from None
 
 
 @router.delete("/{notebook_id}", status_code=status.HTTP_204_NO_CONTENT)

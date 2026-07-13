@@ -90,7 +90,10 @@ def validate_upload_file(file: UploadFile, size: int) -> None:
     mime_type = (file.content_type or "").lower()
     if extension not in settings.allowed_document_extensions:
         raise ValueError("Unsupported file extension")
-    if mime_type and mime_type not in settings.allowed_document_mime_types:
+    if mime_type == "application/octet-stream":
+        if extension not in {"md", "txt"}:
+            raise ValueError("Unsupported file type")
+    elif mime_type and mime_type not in settings.allowed_document_mime_types:
         raise ValueError("Unsupported file type")
     if size > settings.document_max_upload_bytes:
         raise ValueError("File is too large")

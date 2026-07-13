@@ -1,9 +1,15 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.models import DocumentStatus, JobStatus
+
+
+class DocumentUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+
+    model_config = {"str_strip_whitespace": True}
 
 
 class DocumentResponse(BaseModel):
@@ -15,6 +21,7 @@ class DocumentResponse(BaseModel):
     storage_backend: str
     file_size_bytes: int
     page_count: int
+    chunk_count: int | None = None
     status: DocumentStatus
     created_at: datetime
 
@@ -34,11 +41,25 @@ class DocumentChunkResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentChunkCreateRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    page_number: int | None = Field(default=None, ge=1)
+    chunk_index: int | None = Field(default=None, ge=0)
+    tokens: int | None = Field(default=None, ge=0)
+
+    model_config = {"str_strip_whitespace": True}
+
+
 class IngestionJobResponse(BaseModel):
     id: UUID
     document_id: UUID
     status: JobStatus
+    original_filename: str | None = None
+    mime_type: str | None = None
+    storage_backend: str
     error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

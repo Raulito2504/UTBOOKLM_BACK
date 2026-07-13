@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
@@ -78,6 +78,29 @@ async def list_documents_by_organization(
     return list(result.scalars().all())
 
 
+async def list_documents_by_ids(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    document_ids: list[uuid.UUID],
+) -> list[Document]:
+    if not document_ids:
+        return []
+
+    result = await db.execute(
+        select(Document).where(
+            Document.organization_id == organization_id,
+            Document.id.in_(document_ids),
+        ),
+    )
+    documents_by_id = {document.id: document for document in result.scalars().all()}
+    return [
+        documents_by_id[document_id]
+        for document_id in document_ids
+        if document_id in documents_by_id
+    ]
+
+
 async def update_document_status(
     db: AsyncSession,
     *,
@@ -85,6 +108,18 @@ async def update_document_status(
     status: DocumentStatus,
 ) -> Document:
     document.status = status
+    await db.flush()
+    return document
+
+
+async def update_document(
+    db: AsyncSession,
+    *,
+    document: Document,
+    title: str | None = None,
+) -> Document:
+    if title is not None:
+        document.title = title
     await db.flush()
     return document
 
@@ -117,16 +152,50 @@ async def create_document_chunk(
     return chunk
 
 
+async def get_next_document_chunk_index(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(func.max(DocumentChunk.chunk_index)).where(
+            DocumentChunk.document_id == document_id,
+        ),
+    )
+    current_max = result.scalar_one()
+    if current_max is None:
+        return 0
+    return int(current_max) + 1
+
+
+async def count_document_chunks(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(func.count(DocumentChunk.id)).where(
+            DocumentChunk.document_id == document_id,
+        ),
+    )
+    return int(result.scalar_one())
+
+
 async def list_document_chunks(
     db: AsyncSession,
     *,
     document_id: uuid.UUID,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[DocumentChunk]:
-    result = await db.execute(
+    statement = (
         select(DocumentChunk)
         .where(DocumentChunk.document_id == document_id)
-        .order_by(DocumentChunk.chunk_index),
+        .order_by(DocumentChunk.chunk_index)
     )
+    if limit is not None:
+        statement = statement.limit(limit).offset(offset)
+    result = await db.execute(statement)
     return list(result.scalars().all())
 
 
@@ -166,3 +235,16 @@ async def create_ingestion_job(
     db.add(job)
     await db.flush()
     return job
+
+
+async def list_ingestion_jobs(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> list[IngestionJob]:
+    result = await db.execute(
+        select(IngestionJob)
+        .where(IngestionJob.document_id == document_id)
+        .order_by(IngestionJob.created_at.desc()),
+    )
+    return list(result.scalars().all())

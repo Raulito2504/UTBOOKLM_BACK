@@ -159,6 +159,40 @@ async def list_messages(
     return await repository.list_chat_messages(db, chat_session_id=chat.id)
 
 
+async def list_chat_sources(
+    db: AsyncSession,
+    *,
+    current_user: User,
+    chat_id: uuid.UUID,
+) -> list[Document]:
+    chat = await get_chat(db, current_user=current_user, chat_id=chat_id)
+    return await documents_repository.list_documents_by_ids(
+        db,
+        organization_id=current_user.organization_id,
+        document_ids=chat.document_ids or [],
+    )
+
+
+async def remove_chat_source(
+    db: AsyncSession,
+    *,
+    current_user: User,
+    chat_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> ChatSession:
+    chat = await get_chat(db, current_user=current_user, chat_id=chat_id)
+    document_ids = [
+        current_document_id
+        for current_document_id in chat.document_ids or []
+        if current_document_id != document_id
+    ]
+    return await repository.update_chat_session(
+        db,
+        chat_session=chat,
+        document_ids=document_ids,
+    )
+
+
 async def index_document(
     db: AsyncSession,
     *,
