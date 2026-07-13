@@ -63,6 +63,10 @@ class QuizNotFoundError(Exception):
     pass
 
 
+class QuizQuestionNotFoundError(Exception):
+    pass
+
+
 async def generate_flashcards(
     db: AsyncSession,
     *,
@@ -324,6 +328,34 @@ async def submit_quiz_answers(
         },
     )
     return attempt
+
+
+async def get_quiz_question_feedback(
+    db: AsyncSession,
+    *,
+    current_user: User,
+    quiz_id: uuid.UUID,
+    question_id: uuid.UUID,
+    answer: str,
+) -> dict[str, Any]:
+    quiz = await get_quiz(db, current_user=current_user, quiz_id=quiz_id)
+    questions = await repository.list_exam_questions(db, exam_id=quiz.id)
+    question = next((item for item in questions if item.id == question_id), None)
+    if question is None:
+        raise QuizQuestionNotFoundError
+
+    expected = question.correct_answer
+    is_correct = (
+        expected is not None
+        and answer.strip().lower() == expected.strip().lower()
+    )
+    return {
+        "question_id": question.id,
+        "submitted_answer": answer,
+        "correct_answer": expected,
+        "is_correct": is_correct if expected is not None else None,
+        "explanation": question.explanation,
+    }
 
 
 async def get_quiz_results(

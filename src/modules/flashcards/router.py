@@ -15,6 +15,8 @@ from src.modules.flashcards.schemas import (
     QuizAnswerSubmitRequest,
     QuizAttemptResponse,
     QuizGenerateRequest,
+    QuizQuestionFeedbackRequest,
+    QuizQuestionFeedbackResponse,
     QuizQuestionResponse,
     QuizResponse,
 )
@@ -232,6 +234,36 @@ async def list_quiz_questions(
 
 
 @quizzes_router.post(
+    "/{quiz_id}/questions/{question_id}/feedback",
+    response_model=QuizQuestionFeedbackResponse,
+)
+@router.post(
+    "/quizzes/{quiz_id}/questions/{question_id}/feedback",
+    response_model=QuizQuestionFeedbackResponse,
+)
+async def get_quiz_question_feedback(
+    quiz_id: UUID,
+    question_id: UUID,
+    payload: QuizQuestionFeedbackRequest,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+) -> QuizQuestionFeedbackResponse:
+    try:
+        feedback = await service.get_quiz_question_feedback(
+            db,
+            current_user=current_user,
+            quiz_id=quiz_id,
+            question_id=question_id,
+            answer=payload.answer,
+        )
+    except service.QuizNotFoundError:
+        raise _quiz_not_found_error() from None
+    except service.QuizQuestionNotFoundError:
+        raise _quiz_question_not_found_error() from None
+    return QuizQuestionFeedbackResponse.model_validate(feedback)
+
+
+@quizzes_router.post(
     "/{quiz_id}/answers",
     response_model=QuizAttemptResponse,
     status_code=status.HTTP_201_CREATED,
@@ -333,4 +365,12 @@ def _quiz_not_found_error() -> AppError:
         status_code=status.HTTP_404_NOT_FOUND,
         error_code="quiz_not_found",
         message="Quiz not found",
+    )
+
+
+def _quiz_question_not_found_error() -> AppError:
+    return AppError(
+        status_code=status.HTTP_404_NOT_FOUND,
+        error_code="quiz_question_not_found",
+        message="Quiz question not found",
     )

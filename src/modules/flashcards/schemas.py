@@ -131,6 +131,18 @@ class QuizQuestionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class QuizQuestionFeedbackRequest(BaseModel):
+    answer: str = Field(..., min_length=1)
+
+
+class QuizQuestionFeedbackResponse(BaseModel):
+    question_id: UUID
+    submitted_answer: str
+    correct_answer: str | None = None
+    is_correct: bool | None = None
+    explanation: str | None = None
+
+
 class QuizAnswerSubmitRequest(BaseModel):
     answers: dict[UUID, str] = Field(..., min_length=1)
 
