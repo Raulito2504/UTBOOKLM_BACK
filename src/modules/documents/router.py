@@ -1,19 +1,14 @@
 from typing import Annotated
-from uuid import UUID
+import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from src.api.v1.dependencies import CurrentUser, DatabaseSession, pagination_params
-from src.core.exceptions import AppError
-from src.modules.documents import service
-from src.modules.documents.schemas import (
-    DocumentChunkCreateRequest,
-    DocumentChunkResponse,
-    DocumentResponse,
-    DocumentUpdateRequest,
-    IngestionJobResponse,
-)
-from src.modules.documents.storage import get_document_storage
+from src.models import DocumentStatus
+from src.modules.documents import repository, service
+from src.modules.documents.schemas import DocumentDetailResponse, DocumentListResponse
+from src.modules.documents.schemas import DocumentResponse, DocumentStatusResponse
+from src.modules.documents.schemas import DocumentUploadResponse, IngestionJobResponse
 
 
 router = APIRouter()
@@ -25,280 +20,113 @@ async def health() -> dict[str, str]:
 
 
 @router.post(
-    "",
-    response_model=DocumentResponse,
+    "/upload",
+    response_model=DocumentUploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_document(
+async def upload(
     db: DatabaseSession,
     current_user: CurrentUser,
     file: Annotated[UploadFile, File()],
-    title: Annotated[str | None, Form()] = None,
-) -> DocumentResponse:
-    content = await file.read()
-    storage = get_document_storage()
+) -> DocumentUploadResponse:
     try:
-        document = await service.upload_document(
+        document, job = await service.upload_document(
             db,
             current_user=current_user,
-            filename=file.filename or "document",
-            content_type=file.content_type,
-            content=content,
-            title=title,
-            storage=storage,
+            file=file,
         )
-        await db.commit()
-        await db.refresh(document)
-    except service.EmptyDocumentError:
-        await db.rollback()
-        raise AppError(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_code="empty_document",
-            message="The uploaded document is empty",
-        ) from None
-    except service.DocumentLimitExceededError as exc:
-        await db.rollback()
-        raise _document_limit_error(exc) from None
-    except service.UnsupportedDocumentError as exc:
-        await db.rollback()
-        raise AppError(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_code="unsupported_document",
-            message=str(exc) or "Unsupported document",
-        ) from None
-    except service.DocumentParseError as exc:
-        await db.rollback()
-        raise AppError(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            error_code="document_parse_failed",
-            message=str(exc) or "Could not parse document",
-        ) from None
+    except ValueError as exc:
+        status_code = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+        if "large" not in str(exc).lower():
+            status_code = status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from None
 
-    return await _document_response(
-        db,
-        current_user=current_user,
-        document=document,
+    return DocumentUploadResponse(
+        document=DocumentResponse.model_validate(document),
+        ingestion_job=IngestionJobResponse.model_validate(job),
     )
 
 
-@router.get("", response_model=list[DocumentResponse])
+@router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     db: DatabaseSession,
     current_user: CurrentUser,
     pagination: Annotated[dict[str, int], Depends(pagination_params)],
-) -> list[DocumentResponse]:
-    documents = await service.list_documents(
+) -> DocumentListResponse:
+    documents = await repository.list_documents_by_organization(
         db,
-        current_user=current_user,
+        organization_id=current_user.organization_id,
         limit=pagination["limit"],
         offset=pagination["offset"],
     )
-    return [
-        await _document_response(
-            db,
-            current_user=current_user,
-            document=document,
-        )
-        for document in documents
-    ]
+    total = await repository.count_documents_by_organization(
+        db,
+        organization_id=current_user.organization_id,
+    )
+    return DocumentListResponse(
+        items=[DocumentResponse.model_validate(document) for document in documents],
+        total=total,
+        limit=pagination["limit"],
+        offset=pagination["offset"],
+    )
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/{doc_id}", response_model=DocumentDetailResponse)
 async def get_document(
-    document_id: UUID,
     db: DatabaseSession,
     current_user: CurrentUser,
-) -> DocumentResponse:
-    try:
-        document = await service.get_document(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-        )
-    except service.DocumentNotFoundError:
-        raise AppError(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_code="document_not_found",
-            message="Document not found",
-        ) from None
-    return await _document_response(
+    doc_id: uuid.UUID,
+) -> DocumentDetailResponse:
+    document = await service.get_document_or_none(
         db,
-        current_user=current_user,
-        document=document,
+        document_id=doc_id,
+        organization_id=current_user.organization_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    chunks = await repository.list_document_chunks(db, document_id=document.id)
+    job = await repository.get_latest_ingestion_job(db, document_id=document.id)
+    return DocumentDetailResponse(
+        document=DocumentResponse.model_validate(document),
+        chunk_count=len(chunks),
+        ingestion_job=IngestionJobResponse.model_validate(job) if job else None,
     )
 
 
-@router.patch("/{document_id}", response_model=DocumentResponse)
-async def update_document(
-    document_id: UUID,
-    payload: DocumentUpdateRequest,
-    db: DatabaseSession,
-    current_user: CurrentUser,
-) -> DocumentResponse:
-    try:
-        document = await service.update_document(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-            title=payload.title,
-        )
-        await db.commit()
-        await db.refresh(document)
-    except service.DocumentNotFoundError:
-        await db.rollback()
-        raise _document_not_found_error() from None
-    return await _document_response(
-        db,
-        current_user=current_user,
-        document=document,
-    )
-
-
-@router.get("/{document_id}/chunks", response_model=list[DocumentChunkResponse])
-async def list_document_chunks(
-    document_id: UUID,
-    db: DatabaseSession,
-    current_user: CurrentUser,
-    pagination: Annotated[dict[str, int], Depends(pagination_params)],
-) -> list[DocumentChunkResponse]:
-    try:
-        chunks = await service.list_chunks(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-            limit=pagination["limit"],
-            offset=pagination["offset"],
-        )
-    except service.DocumentNotFoundError:
-        raise AppError(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_code="document_not_found",
-            message="Document not found",
-        ) from None
-    return [DocumentChunkResponse.model_validate(chunk) for chunk in chunks]
-
-
-@router.post(
-    "/{document_id}/chunks",
-    response_model=DocumentChunkResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_document_chunk(
-    document_id: UUID,
-    payload: DocumentChunkCreateRequest,
-    db: DatabaseSession,
-    current_user: CurrentUser,
-) -> DocumentChunkResponse:
-    try:
-        chunk = await service.create_chunk(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-            content=payload.content,
-            page_number=payload.page_number,
-            chunk_index=payload.chunk_index,
-            tokens=payload.tokens,
-        )
-        await db.commit()
-        await db.refresh(chunk)
-    except service.DocumentNotFoundError:
-        await db.rollback()
-        raise _document_not_found_error() from None
-    except service.DocumentLimitExceededError as exc:
-        await db.rollback()
-        raise _document_limit_error(exc) from None
-    return DocumentChunkResponse.model_validate(chunk)
-
-
-@router.post(
-    "/{document_id}/ingestion-jobs",
-    response_model=IngestionJobResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_document_ingestion_job(
-    document_id: UUID,
-    db: DatabaseSession,
-    current_user: CurrentUser,
-) -> IngestionJobResponse:
-    try:
-        job = await service.create_ingestion_job(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-        )
-        await db.commit()
-        await db.refresh(job)
-    except service.DocumentNotFoundError:
-        await db.rollback()
-        raise _document_not_found_error() from None
-    return IngestionJobResponse.model_validate(job)
-
-
-@router.get(
-    "/{document_id}/ingestion-jobs",
-    response_model=list[IngestionJobResponse],
-)
-async def list_document_ingestion_jobs(
-    document_id: UUID,
-    db: DatabaseSession,
-    current_user: CurrentUser,
-) -> list[IngestionJobResponse]:
-    try:
-        jobs = await service.list_ingestion_jobs(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-        )
-    except service.DocumentNotFoundError:
-        raise _document_not_found_error() from None
-    return [IngestionJobResponse.model_validate(job) for job in jobs]
-
-
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
-    document_id: UUID,
     db: DatabaseSession,
     current_user: CurrentUser,
+    doc_id: uuid.UUID,
 ) -> None:
-    try:
-        await service.delete_document(
-            db,
-            current_user=current_user,
-            document_id=document_id,
-            storage=get_document_storage(),
-        )
-        await db.commit()
-    except service.DocumentNotFoundError:
-        await db.rollback()
-        raise _document_not_found_error() from None
-
-
-def _document_not_found_error() -> AppError:
-    return AppError(
-        status_code=status.HTTP_404_NOT_FOUND,
-        error_code="document_not_found",
-        message="Document not found",
-    )
-
-
-async def _document_response(
-    db: DatabaseSession,
-    *,
-    current_user: CurrentUser,
-    document: object,
-) -> DocumentResponse:
-    response = DocumentResponse.model_validate(document)
-    response.chunk_count = await service.count_chunks(
+    document = await service.get_document_or_none(
         db,
-        current_user=current_user,
-        document_id=response.id,
+        document_id=doc_id,
+        organization_id=current_user.organization_id,
     )
-    return response
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    await service.delete_document_with_assets(db, document=document)
 
 
-def _document_limit_error(exc: service.DocumentLimitExceededError) -> AppError:
-    return AppError(
-        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        error_code=exc.error_code,
-        message=exc.message,
+@router.get("/{doc_id}/status", response_model=DocumentStatusResponse)
+async def get_document_status(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    doc_id: uuid.UUID,
+) -> DocumentStatusResponse:
+    document = await service.get_document_or_none(
+        db,
+        document_id=doc_id,
+        organization_id=current_user.organization_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    job = await repository.get_latest_ingestion_job(db, document_id=document.id)
+    return DocumentStatusResponse(
+        document_id=document.id,
+        status=DocumentStatus(document.status),
+        ingestion_job=IngestionJobResponse.model_validate(job) if job else None,
     )

@@ -1,6 +1,8 @@
 import uuid
 
-from sqlalchemy import func, select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
@@ -78,27 +80,17 @@ async def list_documents_by_organization(
     return list(result.scalars().all())
 
 
-async def list_documents_by_ids(
+async def count_documents_by_organization(
     db: AsyncSession,
     *,
     organization_id: uuid.UUID,
-    document_ids: list[uuid.UUID],
-) -> list[Document]:
-    if not document_ids:
-        return []
-
+) -> int:
     result = await db.execute(
-        select(Document).where(
+        select(func.count(Document.id)).where(
             Document.organization_id == organization_id,
-            Document.id.in_(document_ids),
         ),
     )
-    documents_by_id = {document.id: document for document in result.scalars().all()}
-    return [
-        documents_by_id[document_id]
-        for document_id in document_ids
-        if document_id in documents_by_id
-    ]
+    return int(result.scalar_one())
 
 
 async def update_document_status(
@@ -112,21 +104,15 @@ async def update_document_status(
     return document
 
 
-async def update_document(
+async def update_document_page_count(
     db: AsyncSession,
     *,
     document: Document,
-    title: str | None = None,
+    page_count: int,
 ) -> Document:
-    if title is not None:
-        document.title = title
+    document.page_count = page_count
     await db.flush()
     return document
-
-
-async def delete_document(db: AsyncSession, *, document: Document) -> None:
-    await db.delete(document)
-    await db.flush()
 
 
 async def create_document_chunk(
@@ -199,21 +185,14 @@ async def list_document_chunks(
     return list(result.scalars().all())
 
 
-async def update_document_chunk_vector_id(
+async def delete_document_chunks(
     db: AsyncSession,
     *,
-    chunk: DocumentChunk,
-    vector_id: str,
-) -> DocumentChunk:
-    chunk.vector_id = vector_id
-    await db.flush()
-    return chunk
-
-
-async def delete_document_chunks(db: AsyncSession, *, document_id: uuid.UUID) -> None:
-    chunks = await list_document_chunks(db, document_id=document_id)
-    for chunk in chunks:
-        await db.delete(chunk)
+    document_id: uuid.UUID,
+) -> None:
+    await db.execute(
+        delete(DocumentChunk).where(DocumentChunk.document_id == document_id),
+    )
     await db.flush()
 
 
@@ -237,14 +216,40 @@ async def create_ingestion_job(
     return job
 
 
-async def list_ingestion_jobs(
+async def get_latest_ingestion_job(
     db: AsyncSession,
     *,
     document_id: uuid.UUID,
-) -> list[IngestionJob]:
+) -> IngestionJob | None:
     result = await db.execute(
         select(IngestionJob)
         .where(IngestionJob.document_id == document_id)
         .order_by(IngestionJob.created_at.desc()),
     )
-    return list(result.scalars().all())
+    return result.scalars().first()
+
+
+async def update_ingestion_job_status(
+    db: AsyncSession,
+    *,
+    job: IngestionJob,
+    status: JobStatus,
+    error_message: str | None = None,
+) -> IngestionJob:
+    job.status = status
+    job.error_message = error_message
+    if status == JobStatus.PROCESSING:
+        job.started_at = datetime.now(UTC)
+    if status in {JobStatus.COMPLETED, JobStatus.FAILED}:
+        job.finished_at = datetime.now(UTC)
+    await db.flush()
+    return job
+
+
+async def delete_document(
+    db: AsyncSession,
+    *,
+    document: Document,
+) -> None:
+    await db.delete(document)
+    await db.flush()
