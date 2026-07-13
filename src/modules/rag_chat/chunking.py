@@ -11,8 +11,8 @@ class TextChunk:
 def chunk_text(
     text: str,
     *,
-    chunk_size: int = 1800,
-    overlap: int = 200,
+    chunk_size: int = 2200,
+    overlap: int = 250,
     page_number: int | None = None,
 ) -> list[TextChunk]:
     clean_text = " ".join(text.split())

@@ -31,9 +31,9 @@ class PlanType(str, enum.Enum):
 
 
 class UserRole(str, enum.Enum):
-    OWNER = "owner"
     ADMIN = "admin"
-    MEMBER = "member"
+    TEACHER = "teacher"
+    STUDENT = "student"
 
 
 class DocumentStatus(str, enum.Enum):
@@ -156,7 +156,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -343,7 +343,10 @@ class ChatMessage(Base):
 
 class FlashcardDeck(Base):
     __tablename__ = "flashcard_decks"
-    __table_args__ = (Index("idx_flashcard_decks_user_id", "user_id"),)
+    __table_args__ = (
+        Index("idx_flashcard_decks_user_id", "user_id"),
+        Index("idx_flashcard_decks_notebook_id", "notebook_id"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk_column()
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -354,6 +357,15 @@ class FlashcardDeck(Base):
     document_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="SET NULL"),
+    )
+    document_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)),
+        nullable=False,
+        server_default=text("'{}'::uuid[]"),
+    )
+    notebook_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"),
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     card_count: Mapped[int] = mapped_column(
@@ -525,7 +537,7 @@ class OrganizationMembership(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -551,7 +563,7 @@ class OrganizationInvitation(Base):
     role: Mapped[UserRole] = mapped_column(
         postgres_enum(UserRole, "user_role"),
         nullable=False,
-        server_default=UserRole.MEMBER.value,
+        server_default=UserRole.STUDENT.value,
     )
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -637,6 +649,7 @@ class Exam(Base):
     __table_args__ = (
         Index("idx_exams_user_id", "user_id"),
         Index("idx_exams_document_id", "document_id"),
+        Index("idx_exams_notebook_id", "notebook_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk_column()
@@ -648,6 +661,15 @@ class Exam(Base):
     document_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="SET NULL"),
+    )
+    document_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)),
+        nullable=False,
+        server_default=text("'{}'::uuid[]"),
+    )
+    notebook_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"),
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

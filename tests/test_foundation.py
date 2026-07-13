@@ -4,9 +4,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI, status
+from fastapi.testclient import TestClient
 
 from src.core.config import get_settings
 from src.core.events import EventPublisher
+from src.core.exceptions import AppError, register_exception_handlers
+from src.modules.documents.service import DocumentLimitExceededError, parse_document_text
 from src.modules.documents.storage import LocalDocumentStorage, validate_upload_file
 from src.modules.rag_chat.chunking import chunk_text
 
@@ -17,8 +21,95 @@ def test_app_imports_with_routers() -> None:
     paths = set(module.app.openapi()["paths"])
 
     assert "/api/v1/auth/health" in paths
+    assert "/api/v1/auth/register" in paths
+    assert "/api/v1/auth/login" in paths
+    assert "/api/v1/auth/refresh" in paths
+    assert "/api/v1/auth/logout" in paths
+    assert "/api/v1/auth/password/forgot" in paths
+    assert "/api/v1/auth/password/reset" in paths
+    assert "/api/v1/auth/google/login" in paths
+    assert "/api/v1/auth/google/callback" in paths
+    assert "/api/v1/users/me" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/users/me"]
+    assert "put" in module.app.openapi()["paths"]["/api/v1/users/me"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/users/me"]
+    assert "/api/v1/admin/users" in paths
+    assert "/api/v1/admin/users/{user_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/admin/users/{user_id}"]
+    assert "/api/v1/dashboard/health" in paths
+    assert "/api/v1/dashboard/metrics" in paths
+    assert "/api/v1/dashboard/activity" in paths
+    assert "/api/v1/dashboard/notebooks" in paths
+    assert "/api/v1/notebooks/health" in paths
+    assert "/api/v1/notebooks" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/notebooks"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/notebooks"]
+    assert "/api/v1/notebooks/{notebook_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}"]
+    assert "/api/v1/notebooks/{notebook_id}/sources" in paths
+    assert "get" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}/sources"]
+    assert "post" in module.app.openapi()["paths"]["/api/v1/notebooks/{notebook_id}/sources"]
+    assert "/api/v1/notebooks/{notebook_id}/sources/{document_id}" in paths
+    assert (
+        "delete"
+        in module.app.openapi()["paths"][
+            "/api/v1/notebooks/{notebook_id}/sources/{document_id}"
+        ]
+    )
+    assert "/api/v1/notebooks/{notebook_id}/messages" in paths
     assert "/api/v1/docs/health" in paths
+    assert "/api/v1/docs" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/docs"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/docs"]
+    assert "/api/v1/docs/{document_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/docs/{document_id}"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/docs/{document_id}"]
+    assert "/api/v1/docs/{document_id}/chunks" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/docs/{document_id}/chunks"]
+    assert "/api/v1/docs/{document_id}/ingestion-jobs" in paths
+    assert (
+        "post"
+        in module.app.openapi()["paths"][
+            "/api/v1/docs/{document_id}/ingestion-jobs"
+        ]
+    )
+    assert (
+        "get"
+        in module.app.openapi()["paths"][
+            "/api/v1/docs/{document_id}/ingestion-jobs"
+        ]
+    )
     assert "/api/v1/rag/health" in paths
+    assert "/api/v1/rag/chats" in paths
+    assert "post" in module.app.openapi()["paths"]["/api/v1/rag/chats"]
+    assert "get" in module.app.openapi()["paths"]["/api/v1/rag/chats"]
+    assert "/api/v1/rag/chats/{chat_id}" in paths
+    assert "patch" in module.app.openapi()["paths"]["/api/v1/rag/chats/{chat_id}"]
+    assert "delete" in module.app.openapi()["paths"]["/api/v1/rag/chats/{chat_id}"]
+    assert "/api/v1/rag/chats/{chat_id}/messages" in paths
+    assert "/api/v1/rag/documents/{document_id}/index" in paths
+    assert "/api/v1/flashcards/health" in paths
+    assert "/api/v1/flashcards/generate" in paths
+    assert "/api/v1/flashcards/decks" in paths
+    assert "/api/v1/flashcards/decks/{deck_id}" in paths
+    assert "/api/v1/flashcards/decks/{deck_id}/cards" in paths
+    assert "/api/v1/flashcards/{flashcard_id}/reviews" in paths
+    assert "/api/v1/flashcards/quizzes/generate" in paths
+    assert "/api/v1/flashcards/quizzes" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/questions" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/answers" in paths
+    assert "/api/v1/flashcards/quizzes/{quiz_id}/results" in paths
+    assert "/api/v1/flashcard-decks" in paths
+    assert "/api/v1/flashcard-decks/{deck_id}" in paths
+    assert "/api/v1/flashcard-decks/{deck_id}/cards" in paths
+    assert "/api/v1/quizzes/generate" in paths
+    assert "/api/v1/quizzes" in paths
+    assert "/api/v1/quizzes/{quiz_id}" in paths
+    assert "/api/v1/quizzes/{quiz_id}/questions" in paths
+    assert "/api/v1/quizzes/{quiz_id}/answers" in paths
+    assert "/api/v1/quizzes/{quiz_id}/results" in paths
     assert "/api/v1/rooms/health" in paths
 
 
@@ -26,7 +117,19 @@ def test_foundation_modules_import() -> None:
     modules = [
         "src.modules.auth.router",
         "src.modules.auth.service",
+        "src.modules.auth.google_oauth",
         "src.modules.auth.schemas",
+        "src.modules.admin.router",
+        "src.modules.admin.repository",
+        "src.modules.admin.service",
+        "src.modules.admin.schemas",
+        "src.modules.dashboard.router",
+        "src.modules.dashboard.repository",
+        "src.modules.dashboard.service",
+        "src.modules.dashboard.schemas",
+        "src.modules.users.router",
+        "src.modules.users.service",
+        "src.modules.users.schemas",
         "src.modules.documents.router",
         "src.modules.documents.service",
         "src.modules.documents.schemas",
@@ -37,6 +140,8 @@ def test_foundation_modules_import() -> None:
         "src.modules.notifications.router",
         "src.modules.notifications.service",
         "src.modules.notifications.schemas",
+        "src.modules.notebooks.router",
+        "src.modules.notebooks.schemas",
         "src.modules.organizations.router",
         "src.modules.organizations.service",
         "src.modules.organizations.schemas",
@@ -60,13 +165,51 @@ def test_foundation_modules_import() -> None:
         importlib.import_module(module)
 
 
-def test_settings_defaults() -> None:
+def test_settings_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("LOG_LEVEL", "")
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://localhost:8000/api/v1/auth/google/callback",
+    )
+    monkeypatch.setenv(
+        "FRONTEND_AUTH_CALLBACK_URL",
+        "http://localhost:3000/auth/callback",
+    )
+
     get_settings.cache_clear()
     settings = get_settings()
 
+    assert settings.app_env == "development"
+    assert settings.auth_enabled is False
+    assert settings.google_auth_enabled is True
+    assert settings.google_client_id == "google-client-id"
+    assert settings.google_client_secret == "google-client-secret"
+    assert (
+        settings.google_redirect_uri
+        == "http://localhost:8000/api/v1/auth/google/callback"
+    )
+    assert settings.frontend_auth_callback_url == "http://localhost:3000/auth/callback"
+    assert settings.effective_log_level == "INFO"
     assert settings.document_storage_backend == "local"
     assert "pdf" in settings.allowed_document_extensions
+    assert "md" in settings.allowed_document_extensions
+    assert "txt" in settings.allowed_document_extensions
+    assert "text/plain" in settings.allowed_document_mime_types
+    assert "text/markdown" in settings.allowed_document_mime_types
     assert settings.document_max_upload_bytes == 50 * 1024 * 1024
+    assert settings.document_max_pages == 300
+    assert settings.document_max_slides == 250
+    assert settings.document_max_text_chars == 600000
+    assert settings.document_max_chunks == 1000
+    assert settings.document_chunk_size == 2200
+    assert settings.document_chunk_overlap == 250
+    assert settings.vector_store_provider == "chroma"
+    assert settings.rag_top_k == 5
     assert settings.broker_url.startswith("redis://")
 
 
@@ -87,11 +230,100 @@ def test_upload_validation_accepts_pdf() -> None:
     validate_upload_file(file, 1024)
 
 
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("notes.txt", "text/plain"),
+        ("notes.md", "text/markdown"),
+        ("notes.md", "application/octet-stream"),
+    ],
+)
+def test_upload_validation_accepts_text_documents(
+    filename: str,
+    content_type: str,
+) -> None:
+    file = SimpleNamespace(filename=filename, content_type=content_type)
+
+    validate_upload_file(file, 1024)
+
+
 def test_upload_validation_rejects_invalid_extension() -> None:
     file = SimpleNamespace(filename="notes.exe", content_type="application/pdf")
 
     with pytest.raises(ValueError):
         validate_upload_file(file, 1024)
+
+
+def test_upload_validation_rejects_octet_stream_for_pdf() -> None:
+    file = SimpleNamespace(
+        filename="notes.pdf",
+        content_type="application/octet-stream",
+    )
+
+    with pytest.raises(ValueError):
+        validate_upload_file(file, 1024)
+
+
+@pytest.mark.parametrize("suffix", ["txt", "md"])
+def test_parse_text_documents_uses_single_page(tmp_path, suffix: str) -> None:
+    path = tmp_path / f"notes.{suffix}"
+    path.write_text("# Heading\n\nStudy notes for retrieval.", encoding="utf-8")
+
+    chunks, page_count = parse_document_text(str(path))
+
+    assert page_count == 1
+    assert chunks
+    assert chunks[0].page_number == 1
+    assert "Study notes" in chunks[0].content
+
+
+def test_parse_text_documents_uses_configured_chunk_size(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("DOCUMENT_CHUNK_SIZE", "10")
+    monkeypatch.setenv("DOCUMENT_CHUNK_OVERLAP", "2")
+    monkeypatch.setenv("DOCUMENT_MAX_TEXT_CHARS", "1000")
+    monkeypatch.setenv("DOCUMENT_MAX_CHUNKS", "100")
+    get_settings.cache_clear()
+    path = tmp_path / "notes.txt"
+    path.write_text("one two three four five six seven", encoding="utf-8")
+
+    chunks, page_count = parse_document_text(str(path))
+
+    assert page_count == 1
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 10 for chunk in chunks)
+    get_settings.cache_clear()
+
+
+def test_parse_text_documents_enforces_text_limit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DOCUMENT_MAX_TEXT_CHARS", "10")
+    get_settings.cache_clear()
+    path = tmp_path / "notes.md"
+    path.write_text("x" * 11, encoding="utf-8")
+
+    with pytest.raises(DocumentLimitExceededError) as exc_info:
+        parse_document_text(str(path))
+
+    assert exc_info.value.error_code == "text_document_too_large"
+    get_settings.cache_clear()
+
+
+def test_parse_text_documents_enforces_chunk_limit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DOCUMENT_CHUNK_SIZE", "10")
+    monkeypatch.setenv("DOCUMENT_CHUNK_OVERLAP", "0")
+    monkeypatch.setenv("DOCUMENT_MAX_TEXT_CHARS", "1000")
+    monkeypatch.setenv("DOCUMENT_MAX_CHUNKS", "1")
+    get_settings.cache_clear()
+    path = tmp_path / "notes.txt"
+    path.write_text("one two three four five six seven", encoding="utf-8")
+
+    with pytest.raises(DocumentLimitExceededError) as exc_info:
+        parse_document_text(str(path))
+
+    assert exc_info.value.error_code == "document_chunk_limit_exceeded"
+    get_settings.cache_clear()
 
 
 def test_chunk_text_is_ordered() -> None:
@@ -112,3 +344,26 @@ def test_event_publisher_runs_handlers() -> None:
     asyncio.run(publisher.publish("study.completed", {"ok": True}))
 
     assert events == [("study.completed", {"ok": True})]
+
+
+def test_app_error_response_uses_standard_shape() -> None:
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def boom() -> None:
+        raise AppError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="invalid_credentials",
+            message="Invalid credentials",
+        )
+
+    response = TestClient(app).get("/boom", headers={"X-Request-ID": "test-request"})
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "error_code": "invalid_credentials",
+        "message": "Invalid credentials",
+        "detail": None,
+        "request_id": "test-request",
+    }

@@ -138,16 +138,50 @@ async def create_document_chunk(
     return chunk
 
 
+async def get_next_document_chunk_index(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(func.max(DocumentChunk.chunk_index)).where(
+            DocumentChunk.document_id == document_id,
+        ),
+    )
+    current_max = result.scalar_one()
+    if current_max is None:
+        return 0
+    return int(current_max) + 1
+
+
+async def count_document_chunks(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+) -> int:
+    result = await db.execute(
+        select(func.count(DocumentChunk.id)).where(
+            DocumentChunk.document_id == document_id,
+        ),
+    )
+    return int(result.scalar_one())
+
+
 async def list_document_chunks(
     db: AsyncSession,
     *,
     document_id: uuid.UUID,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[DocumentChunk]:
-    result = await db.execute(
+    statement = (
         select(DocumentChunk)
         .where(DocumentChunk.document_id == document_id)
-        .order_by(DocumentChunk.chunk_index),
+        .order_by(DocumentChunk.chunk_index)
     )
+    if limit is not None:
+        statement = statement.limit(limit).offset(offset)
+    result = await db.execute(statement)
     return list(result.scalars().all())
 
 

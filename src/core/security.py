@@ -1,14 +1,24 @@
 from datetime import UTC, datetime, timedelta
+import hashlib
+import secrets
 from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from src.core.config import get_settings
 
 
 password_hasher = PasswordHasher()
+
+
+class TokenExpiredError(Exception):
+    pass
+
+
+class TokenInvalidError(Exception):
+    pass
 
 
 def hash_password(password: str) -> str:
@@ -20,6 +30,14 @@ def verify_password(password: str, password_hash: str) -> bool:
         return password_hasher.verify(password_hash, password)
     except (Argon2Error, InvalidHashError):
         return False
+
+
+def generate_secure_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(
@@ -46,5 +64,7 @@ def decode_token(token: str) -> dict[str, Any]:
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
         )
+    except ExpiredSignatureError as exc:
+        raise TokenExpiredError("Token expired") from exc
     except JWTError as exc:
-        raise ValueError("Invalid token") from exc
+        raise TokenInvalidError("Invalid token") from exc

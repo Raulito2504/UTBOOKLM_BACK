@@ -41,6 +41,51 @@ async def get_chat_session(
     return result.scalar_one_or_none()
 
 
+async def list_chat_sessions(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[ChatSession]:
+    statement = select(ChatSession).where(
+        ChatSession.organization_id == organization_id,
+    )
+    if user_id is not None:
+        statement = statement.where(ChatSession.user_id == user_id)
+    result = await db.execute(
+        statement.order_by(ChatSession.updated_at.desc())
+        .limit(limit)
+        .offset(offset),
+    )
+    return list(result.scalars().all())
+
+
+async def update_chat_session(
+    db: AsyncSession,
+    *,
+    chat_session: ChatSession,
+    title: str | None = None,
+    document_ids: list[uuid.UUID] | None = None,
+) -> ChatSession:
+    if title is not None:
+        chat_session.title = title
+    if document_ids is not None:
+        chat_session.document_ids = document_ids
+    await db.flush()
+    return chat_session
+
+
+async def delete_chat_session(
+    db: AsyncSession,
+    *,
+    chat_session: ChatSession,
+) -> None:
+    await db.delete(chat_session)
+    await db.flush()
+
+
 async def create_chat_message(
     db: AsyncSession,
     *,

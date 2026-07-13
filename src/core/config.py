@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "UTBookLM"
     app_version: str = "1.0.0"
+    app_env: str = Field("development", alias="APP_ENV")
+    log_level: str | None = Field(None, alias="LOG_LEVEL")
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = Field("http://localhost:3000", alias="CORS_ORIGINS")
 
@@ -28,40 +30,90 @@ class Settings(BaseSettings):
         30,
         alias="PASSWORD_RESET_TOKEN_EXPIRE_MINUTES",
     )
+    auth_enabled: bool = Field(False, alias="AUTH_ENABLED")
+    google_auth_enabled: bool = Field(False, alias="GOOGLE_AUTH_ENABLED")
+    google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str | None = Field(
+        None,
+        alias="GOOGLE_CLIENT_SECRET",
+    )
+    google_redirect_uri: str | None = Field(
+        None,
+        alias="GOOGLE_REDIRECT_URI",
+    )
+    frontend_auth_callback_url: str = Field(
+        "http://localhost:3000/auth/callback",
+        alias="FRONTEND_AUTH_CALLBACK_URL",
+    )
 
     document_storage_backend: str = Field("local", alias="DOCUMENT_STORAGE_BACKEND")
     document_storage_dir: str = Field("storage/documents", alias="DOCUMENT_STORAGE_DIR")
     document_max_upload_mb: int = Field(50, alias="DOCUMENT_MAX_UPLOAD_MB")
     document_allowed_extensions: str = Field(
-        "pdf,pptx",
+        "pdf,pptx,md,txt",
         alias="DOCUMENT_ALLOWED_EXTENSIONS",
     )
     document_allowed_mime_types: str = Field(
-        "application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown",
         alias="DOCUMENT_ALLOWED_MIME_TYPES",
     )
+    document_max_pages: int = Field(300, alias="DOCUMENT_MAX_PAGES")
+    document_max_slides: int = Field(250, alias="DOCUMENT_MAX_SLIDES")
+    document_max_text_chars: int = Field(600000, alias="DOCUMENT_MAX_TEXT_CHARS")
+    document_max_chunks: int = Field(1000, alias="DOCUMENT_MAX_CHUNKS")
+    document_chunk_size: int = Field(2200, alias="DOCUMENT_CHUNK_SIZE")
+    document_chunk_overlap: int = Field(250, alias="DOCUMENT_CHUNK_OVERLAP")
 
     minio_endpoint: str = Field("http://localhost:9000", alias="MINIO_ENDPOINT")
     minio_access_key: str = Field("minioadmin", alias="MINIO_ACCESS_KEY")
     minio_secret_key: str = Field("minioadmin", alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field("documents", alias="MINIO_BUCKET")
+    s3_endpoint_url: str | None = Field(None, alias="S3_ENDPOINT_URL")
+    s3_access_key_id: str | None = Field(None, alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str | None = Field(None, alias="S3_SECRET_ACCESS_KEY")
+    s3_bucket: str | None = Field(None, alias="S3_BUCKET")
+    s3_region_name: str | None = Field(None, alias="S3_REGION_NAME")
 
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
     celery_broker_url: str | None = Field(None, alias="CELERY_BROKER_URL")
     celery_result_backend: str | None = Field(None, alias="CELERY_RESULT_BACKEND")
 
     chroma_persist_dir: str = Field("storage/chroma", alias="CHROMA_PERSIST_DIR")
+    vector_store_provider: str = Field("chroma", alias="VECTOR_STORE_PROVIDER")
     embedding_provider: str = Field("fake", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field("text-embedding-3-small", alias="EMBEDDING_MODEL")
     llm_provider: str = Field("fake", alias="LLM_PROVIDER")
     llm_model: str = Field("gpt-4o", alias="LLM_MODEL")
     openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
+    gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")
+    google_api_key: str | None = Field(None, alias="GOOGLE_API_KEY")
+    gemini_model: str = Field("gemini-1.5-flash", alias="GEMINI_MODEL")
+    gemini_embedding_model: str = Field(
+        "text-embedding-004",
+        alias="GEMINI_EMBEDDING_MODEL",
+    )
+    rag_top_k: int = Field(5, alias="RAG_TOP_K")
+    rag_max_context_chars: int = Field(12000, alias="RAG_MAX_CONTEXT_CHARS")
+    rag_request_timeout_seconds: int = Field(
+        60,
+        alias="RAG_REQUEST_TIMEOUT_SECONDS",
+    )
+    rag_max_question_chars: int = Field(4000, alias="RAG_MAX_QUESTION_CHARS")
+    rag_max_chat_documents: int = Field(10, alias="RAG_MAX_CHAT_DOCUMENTS")
 
     smtp_host: str | None = Field(None, alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")
     smtp_user: str | None = Field(None, alias="SMTP_USER")
     smtp_password: str | None = Field(None, alias="SMTP_PASSWORD")
+    email_enabled: bool = Field(False, alias="EMAIL_ENABLED")
+    email_provider: str = Field("brevo", alias="EMAIL_PROVIDER")
     email_from: str = Field("noreply@example.com", alias="EMAIL_FROM")
+    email_from_name: str = Field("UTBookLM", alias="EMAIL_FROM_NAME")
+    frontend_password_reset_url: str = Field(
+        "http://localhost:3000/reset-password",
+        alias="FRONTEND_PASSWORD_RESET_URL",
+    )
+    brevo_api_key: str | None = Field(None, alias="BREVO_API_KEY")
 
     websocket_token_expire_minutes: int = Field(
         5,
@@ -123,6 +175,20 @@ class Settings(BaseSettings):
     @property
     def result_backend_url(self) -> str:
         return self.celery_result_backend or self.redis_url
+
+    @computed_field
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    @computed_field
+    @property
+    def effective_log_level(self) -> str:
+        if self.log_level:
+            return self.log_level.upper()
+        if self.is_production:
+            return "WARNING"
+        return "INFO"
 
 
 @lru_cache

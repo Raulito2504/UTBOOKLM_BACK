@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- =========================================
 
 CREATE TYPE plan_type AS ENUM ('free', 'pro');
-CREATE TYPE user_role AS ENUM ('owner', 'admin', 'member');
+CREATE TYPE user_role AS ENUM ('admin', 'teacher', 'student');
 CREATE TYPE document_status AS ENUM ('processing', 'ready', 'failed');
 CREATE TYPE message_role AS ENUM ('user', 'assistant');
 CREATE TYPE flashcard_difficulty AS ENUM ('easy', 'medium', 'hard');
@@ -34,7 +34,7 @@ CREATE TABLE users (
     email           varchar(255) NOT NULL UNIQUE,
     password_hash   varchar(255) NOT NULL,
     name            varchar(255) NOT NULL,
-    role            user_role NOT NULL DEFAULT 'member',
+    role            user_role NOT NULL DEFAULT 'student',
     is_active       boolean NOT NULL DEFAULT true,
     created_at      timestamptz NOT NULL DEFAULT now()
 );

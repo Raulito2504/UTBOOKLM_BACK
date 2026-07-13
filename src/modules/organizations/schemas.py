@@ -16,4 +16,4 @@ class OrganizationResponse(BaseModel):
 
 class OrganizationInviteRequest(BaseModel):
     email: str
-    role: UserRole = UserRole.MEMBER
+    role: UserRole = UserRole.STUDENT
